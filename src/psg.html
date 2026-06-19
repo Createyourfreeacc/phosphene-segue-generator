@@ -1,0 +1,2430 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phosphene · Segue Generator (PSG)</title>
+<style>/* PSG UI — preview-dominant stage · bottom transport · right control panel (psg-ui-design.md). */
+:root{
+  --bg:#0b0b10; --panel:#13131b; --panel2:#191922; --line:#2a2a37; --line2:#363648;
+  --ink:#e9e9f0; --ink2:#a6a6b6; --ink3:#6f6f82;
+  --accent:#c5ff15; --accent2:var(--accent); --hot:#fe0089;   /* --accent is driven from the live palette */
+  --radius:9px; --h:30px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:13px/1.45 'Sora',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button{font:inherit;color:var(--ink);cursor:pointer}
+#app{height:100%;display:grid;grid-template-columns:1fr 376px;grid-template-rows:1fr auto;
+  grid-template-areas:"stage panel" "transport panel"}
+/* themed scrollbar (panel) */
+#panelBody{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+#panelBody::-webkit-scrollbar{width:10px}
+#panelBody::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px;border:2px solid var(--panel)}
+#panelBody::-webkit-scrollbar-thumb:hover{background:var(--ink3)}
+#panelBody::-webkit-scrollbar-track{background:transparent}
+
+/* preview stage */
+#stageWrap{grid-area:stage;position:relative;display:grid;place-items:center;min-height:0;min-width:0;
+  background-color:#1b1b24;
+  background-image:linear-gradient(45deg,#15151c 25%,transparent 25%,transparent 75%,#15151c 75%),
+    linear-gradient(45deg,#15151c 25%,transparent 25%,transparent 75%,#15151c 75%);
+  background-size:26px 26px;background-position:0 0,13px 13px}
+#stage{max-width:100%;max-height:100%;display:block;box-shadow:0 0 0 1px var(--line)}
+#titleOverlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:2}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:4px 9px;font-size:11px;color:var(--ink2)}
+.chip.on{color:var(--bg);background:var(--accent);border-color:var(--accent);font-weight:600}
+
+/* transport */
+#transport{grid-area:transport;display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--panel);border-top:1px solid var(--line)}
+#transport button.t{width:var(--h);height:var(--h);border:1px solid var(--line);background:var(--panel2);
+  border-radius:7px;display:grid;place-items:center;font-size:13px}
+#transport button.t.on{background:var(--accent2);border-color:var(--accent2);color:#04222a}
+#scrub{flex:1;accent-color:var(--accent2);height:6px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{padding:5px 10px;background:var(--panel2);border:0;border-right:1px solid var(--line);font-size:11px;color:var(--ink2)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent2);color:#04222a;font-weight:600}
+select.mini{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);height:var(--h);padding:0 6px}
+
+/* right panel */
+#panel{grid-area:panel;background:var(--panel);border-left:1px solid var(--line);
+  display:grid;grid-template-rows:auto 1fr;min-height:0}
+#panelHead{position:sticky;top:0;z-index:2;padding:12px;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;flex-direction:column;gap:8px}
+#randomize{height:54px;border:0;border-radius:var(--radius);font-size:16px;font-weight:700;letter-spacing:.14em;
+  color:#0a0a0a;background:linear-gradient(95deg,var(--accent),var(--accent2));box-shadow:0 2px 18px -6px var(--accent2)}
+#randomize:active{transform:translateY(1px)}
+.row2{display:flex;gap:8px}
+.famgallery{display:flex;flex-wrap:wrap;gap:5px}
+.famgallery button{flex:1 0 auto;min-width:62px;padding:7px 6px;border:1px solid var(--line2);background:var(--panel2);border-radius:7px;font-size:11px;color:var(--ink2);text-align:center}
+.famgallery button.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+.row2 button{flex:1;height:34px;border:1px solid var(--line2);background:var(--panel2);border-radius:8px;font-weight:600}
+#exportBtn{background:var(--panel2)}
+.headutil{display:flex;gap:8px;align-items:center;justify-content:space-between;color:var(--ink2);font-size:11px}
+.toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--accent2)}
+
+#panelBody{overflow-y:auto;padding:6px 12px 40px}
+details.grp{border-bottom:1px solid var(--line);padding:6px 0}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+  padding:6px 2px;font-weight:600;letter-spacing:.03em;color:var(--ink)}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .caret{color:var(--ink3);transition:transform .15s;font-size:10px}
+details.grp[open]>summary .caret{transform:rotate(90deg)}
+
+/* param rows */
+.prow{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;padding:7px 2px}
+.prow .plabel{color:var(--ink2);font-size:12px}
+.prow .pval{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink);background:var(--panel2);
+  border:1px solid var(--line);border-radius:5px;padding:1px 6px;min-width:46px;text-align:right}
+.prow .slot{grid-column:1/3}
+
+/* 3-knob slider */
+.knob3{position:relative;height:26px;margin-top:2px}
+.knob3 .track{position:absolute;top:11px;left:0;right:0;height:4px;background:var(--panel2);border-radius:3px;border:1px solid var(--line)}
+.knob3 .band{position:absolute;top:11px;height:4px;background:linear-gradient(90deg,var(--accent),var(--ink3));opacity:.45;border-radius:3px}
+.knob3 .h{position:absolute;top:5px;width:14px;height:14px;margin-left:-7px;border-radius:50%;cursor:grab;touch-action:none}
+.knob3 .h.cur{top:3px;width:18px;height:18px;margin-left:-9px;background:var(--ink);border:2px solid var(--accent2);box-shadow:0 1px 4px rgba(0,0,0,.5);z-index:3}
+.knob3 .h.bnd{background:var(--panel);border:2px solid var(--accent);z-index:2}
+.knob3.noband .h.bnd{display:none}
+.knob3.noband .band{display:none}
+
+/* enum chips / bool tristate */
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;grid-column:1/3;margin-top:3px}
+.chiprow button{padding:4px 9px;border:1px solid var(--line);background:var(--panel2);border-radius:6px;font-size:11px;color:var(--ink2)}
+.chiprow button.on{background:var(--accent);color:#0a0a0a;border-color:var(--accent);font-weight:600}
+.chiprow button.rand{outline:1px dashed var(--accent2);outline-offset:1px}
+.tristate{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;width:max-content}
+.tristate button{padding:3px 10px;background:var(--panel2);border:0;border-right:1px solid var(--line);font-size:11px;color:var(--ink2)}
+.tristate button:last-child{border-right:0}
+.tristate button.on{background:var(--accent2);color:#04222a;font-weight:600}
+
+/* colour panel */
+.swatchstrip{display:flex;gap:4px;grid-column:1/3;margin:4px 0}
+.swatchstrip .sw{flex:1;height:30px;border-radius:6px;border:1px solid var(--line);cursor:pointer;position:relative}
+.swatchstrip .sw.sel{outline:2px solid var(--accent);outline-offset:1px}
+.swatchstrip .sw .role{position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:8px;color:rgba(255,255,255,.85);text-shadow:0 1px 1px #000}
+.cpad{position:relative;grid-column:1/3;height:150px;border-radius:8px;border:1px solid var(--line);margin:6px 0;overflow:hidden;cursor:crosshair}
+.cpad canvas{position:absolute;inset:0;width:100%;height:100%}
+.cpad .dot{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000,0 1px 3px #000;pointer-events:none}
+
+/* export dialog */
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:12px;
+  padding:0;width:min(440px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dlg-h{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.dlg-b{padding:16px;display:grid;gap:12px}
+.dlg-b label{display:flex;justify-content:space-between;align-items:center;gap:10px;color:var(--ink2)}
+.dlg-b input,.dlg-b select{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);height:30px;padding:0 8px}
+.dlg-f{padding:14px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.dlg-f button{height:36px;padding:0 16px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);font-weight:600}
+.dlg-f button.go{background:var(--accent);color:#0a0a0a;border-color:var(--accent)}
+.bar{height:6px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.bar>div{height:100%;width:0;background:var(--accent);transition:width .1s}
+.note{font-size:11px;color:var(--ink3)}
+
+/* hierarchical colour panel (decisions-log §U2) */
+.colpanel{grid-column:1/3;display:flex;flex-direction:column;gap:6px;margin:4px 0}
+.collabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:4px}
+.chiprow.scheme button{flex:1}
+.roleblock{border:1px solid var(--line);border-radius:7px;padding:4px 8px;background:var(--panel2)}
+.roleblock.open{background:var(--panel)}
+.rolehdr{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--ink2);padding:2px 0}
+.rolehdr .caret{font-size:10px;color:var(--ink3)}
+.rolehdr .rolename{flex:1}
+
+/* editable seed field */
+.headutil .seedlbl{color:var(--ink3)}
+.seedfield{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+  color:var(--ink);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;padding:3px 7px}
+.seedfield:focus{outline:none;border-color:var(--accent)}
+.textfield{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);font:inherit;font-size:12px;padding:4px 8px;margin-top:3px}
+.textfield:focus{outline:none;border-color:var(--accent)}
+
+/* scrub: boundary markers + hover thumbnail preview */
+.scrubwrap{position:relative;flex:1;display:flex;align-items:center}
+.scrubwrap #scrub{flex:1}
+.scrubmarks{position:absolute;inset:0;pointer-events:none}
+.scrubmark{position:absolute;top:50%;width:2px;height:14px;transform:translate(-1px,-50%);background:var(--accent);opacity:.7;border-radius:1px}
+.scrubprev{position:absolute;bottom:24px;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:2px;pointer-events:none;z-index:5}
+.scrubprev.show{display:flex}
+.scrubprev canvas{width:128px;height:72px;border-radius:6px;border:1px solid var(--line2);background:#0c0c12;box-shadow:0 4px 16px -4px #000}
+.scrubprev .pt{font-size:10px;font-variant-numeric:tabular-nums;color:var(--ink2);background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px}
+
+/* oklch-style coloured axis sliders */
+.axisbar{position:relative;height:16px;border-radius:5px;overflow:hidden;border:1px solid var(--line);margin-top:3px;grid-column:1/3}
+.axisbar .axiscanvas{position:absolute;inset:0;width:100%;height:100%}
+.axisbar .axisrange{position:absolute;inset:0;width:100%;height:100%;margin:0;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.axisbar .axisrange::-webkit-slider-thumb{-webkit-appearance:none;width:6px;height:22px;margin-top:-3px;border-radius:3px;background:#fff;box-shadow:0 0 0 1.5px #000,0 0 0 3px rgba(255,255,255,.6)}
+.axisbar .axisrange::-moz-range-thumb{width:6px;height:22px;border:0;border-radius:3px;background:#fff;box-shadow:0 0 0 1.5px #000}
+.axisbar .axisrange::-moz-range-track{background:transparent}
+/* 3-D gamut mini + readout */
+.gamut3d{grid-column:1/3;height:96px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);margin:6px 0;overflow:hidden}
+.gamut3d canvas{width:100%;height:100%;display:block}
+.csreadout{grid-column:1/3;display:flex;gap:6px;margin:4px 0}
+.csreadout .cscode{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);
+  font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:0 8px;height:28px;cursor:copy}
+.csreadout .cscode-fmt{height:28px}
+</style>
+<body>
+<div id="app">
+  <main id="stageWrap"><canvas id="stage"></canvas></main>
+  <footer id="transport"></footer>
+  <aside id="panel"><div id="panelHead"></div><div id="panelBody"></div></aside>
+</div>
+<!-- vendor (global UMD libs: fflate, UPNG) -->
+<script>!function(f){typeof module!='undefined'&&typeof exports=='object'?module.exports=f():typeof define!='undefined'&&define.amd?define(f):(typeof self!='undefined'?self:this).fflate=f()}(function(){var _e={};"use strict";_e.deflate=zt,_e.deflateSync=kt,_e.inflate=At,_e.inflateSync=Tt,_e.gzip=It,_e.compress=It,_e.gzipSync=Ut,_e.compressSync=Ut,_e.gunzip=Zt,_e.gunzipSync=qt,_e.zlib=Lt,_e.zlibSync=Bt,_e.unzlib=Nt,_e.unzlibSync=Pt,_e.gzip=It,_e.compress=It,_e.decompress=Jt,_e.decompressSync=Kt,_e.strToU8=nn,_e.strFromU8=rn,_e.zip=dn,_e.zipSync=gn,_e.unzip=zn,_e.unzipSync=kn;var t=(typeof module!='undefined'&&typeof exports=='object'?function(_f){"use strict";var e,r,t,n=";var __w=require('worker_threads');__w.parentPort.on('message',function(m){onmessage({data:m})}),postMessage=function(m,t){__w.parentPort.postMessage(m,t)},close=process.exit;self=global";try{e=require("worker_threads"),r=e.Worker,t=e.isMarkedAsUntransferable}catch(e){}exports.default=r?function(e,o,a,s,u){var i=!1,l=new r(e+n,{eval:!0}).on("error",function(e){return u(e,null)}).on("message",function(e){return u(null,e)}).on("exit",function(e){e&&!i&&u(Error("exited with code "+e),null)});return t&&(s=s.filter(function(e){return!t(e)})),l.postMessage(a,s),l.terminate=function(){return i=!0,r.prototype.terminate.call(l)},l}:function(e,r,t,n,o){setImmediate(function(){return o(Error("async operations unsupported - update to Node 12+ (or Node 10-11 with the --experimental-worker CLI flag)"),null)});var a=function(){};return{terminate:a,postMessage:a}};return _f}:function(_f){"use strict";var e={};_f.default=function(r,t,s,a,n){var o=new Worker(e[t]||(e[t]=URL.createObjectURL(new Blob([r+';addEventListener("error",function(e){e=e.error;postMessage({$e$:[e.message,e.code,e.stack]})})'],{type:"text/javascript"}))));return o.onmessage=function(e){var r=e.data,t=r.$e$;if(t){var s=Error(t[0]);s.code=t[1],s.stack=t[2],n(s,null)}else n(null,r)},o.postMessage(s,a),o};return _f})({}),n=Uint8Array,r=Uint16Array,i=Int32Array,e=new n([0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0,0]),o=new n([0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,0,0]),s=new n([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]),a=function(t,n){for(var e=new r(31),o=0;o<31;++o)e[o]=n+=1<<t[o-1];var s=new i(e[30]);for(o=1;o<30;++o)for(var a=e[o];a<e[o+1];++a)s[a]=a-e[o]<<5|o;return{b:e,r:s}},u=a(e,2),h=u.b,f=u.r;h[28]=258,f[258]=28;for(var c=a(o,0),l=c.b,p=c.r,v=new r(32768),d=0;d<32768;++d){var g=(43690&d)>>1|(21845&d)<<1;v[d]=((65280&(g=(61680&(g=(52428&g)>>2|(13107&g)<<2))>>4|(3855&g)<<4))>>8|(255&g)<<8)>>1}var y=function(t,n,i){for(var e=t.length,o=0,s=new r(n);o<e;++o)t[o]&&++s[t[o]-1];var a,u=new r(n);for(o=1;o<n;++o)u[o]=u[o-1]+s[o-1]<<1;if(i){a=new r(1<<n);var h=15-n;for(o=0;o<e;++o)if(t[o])for(var f=o<<4|t[o],c=n-t[o],l=u[t[o]-1]++<<c,p=l|(1<<c)-1;l<=p;++l)a[v[l]>>h]=f}else for(a=new r(e),o=0;o<e;++o)t[o]&&(a[o]=v[u[t[o]-1]++]>>15-t[o]);return a},m=new n(288);for(d=0;d<144;++d)m[d]=8;for(d=144;d<256;++d)m[d]=9;for(d=256;d<280;++d)m[d]=7;for(d=280;d<288;++d)m[d]=8;var b=new n(32);for(d=0;d<32;++d)b[d]=5;var w=y(m,9,0),x=y(m,9,1),z=y(b,5,0),k=y(b,5,1),M=function(t){for(var n=t[0],r=1;r<t.length;++r)t[r]>n&&(n=t[r]);return n},S=function(t,n,r){var i=n/8|0;return(t[i]|t[i+1]<<8)>>(7&n)&r},A=function(t,n){var r=n/8|0;return(t[r]|t[r+1]<<8|t[r+2]<<16)>>(7&n)},T=function(t){return(t+7)/8|0},D=function(t,r,i){return(null==r||r<0)&&(r=0),(null==i||i>t.length)&&(i=t.length),new n(t.subarray(r,i))};_e.FlateErrorCode={UnexpectedEOF:0,InvalidBlockType:1,InvalidLengthLiteral:2,InvalidDistance:3,StreamFinished:4,NoStreamHandler:5,InvalidHeader:6,NoCallback:7,InvalidUTF8:8,ExtraFieldTooLong:9,InvalidDate:10,FilenameTooLong:11,StreamFinishing:12,InvalidZipData:13,UnknownCompressionMethod:14};var C=["unexpected EOF","invalid block type","invalid length/literal","invalid distance","stream finished","no stream handler",,"no callback","invalid UTF-8 data","extra field too long","date not in range 1980-2099","filename too long","stream finishing","invalid zip data"],I=function(t,n,r){var i=Error(n||C[t]);if(i.code=t,Error.captureStackTrace&&Error.captureStackTrace(i,I),!r)throw i;return i},U=function(t,r,i,a){var u=t.length,f=a?a.length:0;if(!u||r.f&&!r.l)return i||new n(0);var c=!i,p=c||2!=r.i,v=r.i;c&&(i=new n(3*u));var d=function(t){var r=i.length;if(t>r){var e=new n(Math.max(2*r,t));e.set(i),i=e}},g=r.f||0,m=r.p||0,b=r.b||0,w=r.l,z=r.d,C=r.m,U=r.n,F=8*u;do{if(!w){g=S(t,m,1);var E=S(t,m+1,3);if(m+=3,!E){var Z=t[(Y=T(m)+4)-4]|t[Y-3]<<8,q=Y+Z;if(q>u){v&&I(0);break}p&&d(b+Z),i.set(t.subarray(Y,q),b),r.b=b+=Z,r.p=m=8*q,r.f=g;continue}if(1==E)w=x,z=k,C=9,U=5;else if(2==E){var O=S(t,m,31)+257,G=S(t,m+10,15)+4,L=O+S(t,m+5,31)+1;m+=14;for(var B=new n(L),H=new n(19),j=0;j<G;++j)H[s[j]]=S(t,m+3*j,7);m+=3*G;var N=M(H),P=(1<<N)-1,V=y(H,N,1);for(j=0;j<L;){var Y,J=V[S(t,m,P)];if(m+=15&J,(Y=J>>4)<16)B[j++]=Y;else{var K=0,Q=0;for(16==Y?(Q=3+S(t,m,3),m+=2,K=B[j-1]):17==Y?(Q=3+S(t,m,7),m+=3):18==Y&&(Q=11+S(t,m,127),m+=7);Q--;)B[j++]=K}}var R=B.subarray(0,O),W=B.subarray(O);C=M(R),U=M(W),w=y(R,C,1),z=y(W,U,1)}else I(1);if(m>F){v&&I(0);break}}p&&d(b+131072);for(var X=(1<<C)-1,$=(1<<U)-1,_=m;;_=m){var tt=(K=w[A(t,m)&X])>>4;if((m+=15&K)>F){v&&I(0);break}if(K||I(2),tt<256)i[b++]=tt;else{if(256==tt){_=m,w=null;break}var nt=tt-254;tt>264&&(nt=S(t,m,(1<<(et=e[j=tt-257]))-1)+h[j],m+=et);var rt=z[A(t,m)&$],it=rt>>4;if(rt||I(3),m+=15&rt,W=l[it],it>3){var et=o[it];W+=A(t,m)&(1<<et)-1,m+=et}if(m>F){v&&I(0);break}p&&d(b+131072);var ot=b+nt;if(b<W){var st=f-W,at=Math.min(W,ot);for(st+b<0&&I(3);b<at;++b)i[b]=a[st+b]}for(;b<ot;++b)i[b]=i[b-W]}}r.l=w,r.p=_,r.b=b,r.f=g,w&&(g=1,r.m=C,r.d=z,r.n=U)}while(!g);return b!=i.length&&c?D(i,0,b):i.subarray(0,b)},F=function(t,n,r){var i=n/8|0;t[i]|=r<<=7&n,t[i+1]|=r>>8},E=function(t,n,r){var i=n/8|0;t[i]|=r<<=7&n,t[i+1]|=r>>8,t[i+2]|=r>>16},Z=function(t,i){for(var e=[],o=0;o<t.length;++o)t[o]&&e.push({s:o,f:t[o]});var s=e.length,a=e.slice();if(!s)return{t:j,l:0};if(1==s){var u=new n(e[0].s+1);return u[e[0].s]=1,{t:u,l:1}}e.sort(function(t,n){return t.f-n.f}),e.push({s:-1,f:25001});var h=e[0],f=e[1],c=0,l=1,p=2;for(e[0]={s:-1,f:h.f+f.f,l:h,r:f};l!=s-1;)h=e[e[c].f<e[p].f?c++:p++],f=e[c!=l&&e[c].f<e[p].f?c++:p++],e[l++]={s:-1,f:h.f+f.f,l:h,r:f};var v=a[0].s;for(o=1;o<s;++o)a[o].s>v&&(v=a[o].s);var d=new r(v+1),g=q(e[l-1],d,0);if(g>i){o=0;var y=0,m=g-i,b=1<<m;for(a.sort(function(t,n){return d[n.s]-d[t.s]||t.f-n.f});o<s;++o){var w=a[o].s;if(!(d[w]>i))break;y+=b-(1<<g-d[w]),d[w]=i}for(y>>=m;y>0;){var x=a[o].s;d[x]<i?y-=1<<i-d[x]++-1:++o}for(;o>=0&&y;--o){var z=a[o].s;d[z]==i&&(--d[z],++y)}g=i}return{t:new n(d),l:g}},q=function(t,n,r){return-1==t.s?Math.max(q(t.l,n,r+1),q(t.r,n,r+1)):n[t.s]=r},O=function(t){for(var n=t.length;n&&!t[--n];);for(var i=new r(++n),e=0,o=t[0],s=1,a=function(t){i[e++]=t},u=1;u<=n;++u)if(t[u]==o&&u!=n)++s;else{if(!o&&s>2){for(;s>138;s-=138)a(32754);s>2&&(a(s>10?s-11<<5|28690:s-3<<5|12305),s=0)}else if(s>3){for(a(o),--s;s>6;s-=6)a(8304);s>2&&(a(s-3<<5|8208),s=0)}for(;s--;)a(o);s=1,o=t[u]}return{c:i.subarray(0,e),n:n}},G=function(t,n){for(var r=0,i=0;i<n.length;++i)r+=t[i]*n[i];return r},L=function(t,n,r){var i=r.length,e=T(n+2);t[e]=255&i,t[e+1]=i>>8,t[e+2]=255^t[e],t[e+3]=255^t[e+1];for(var o=0;o<i;++o)t[e+o+4]=r[o];return 8*(e+4+i)},B=function(t,n,i,a,u,h,f,c,l,p,v){F(n,v++,i),++u[256];for(var d=Z(u,15),g=d.t,x=d.l,k=Z(h,15),M=k.t,S=k.l,A=O(g),T=A.c,D=A.n,C=O(M),I=C.c,U=C.n,q=new r(19),B=0;B<T.length;++B)++q[31&T[B]];for(B=0;B<I.length;++B)++q[31&I[B]];for(var H=Z(q,7),j=H.t,N=H.l,P=19;P>4&&!j[s[P-1]];--P);var V,Y,J,K,Q=p+5<<3,R=G(u,m)+G(h,b)+f,W=G(u,g)+G(h,M)+f+14+3*P+G(q,j)+2*q[16]+3*q[17]+7*q[18];if(l>=0&&Q<=R&&Q<=W)return L(n,v,t.subarray(l,l+p));if(F(n,v,1+(W<R)),v+=2,W<R){V=y(g,x,0),Y=g,J=y(M,S,0),K=M;var X=y(j,N,0);for(F(n,v,D-257),F(n,v+5,U-1),F(n,v+10,P-4),v+=14,B=0;B<P;++B)F(n,v+3*B,j[s[B]]);v+=3*P;for(var $=[T,I],_=0;_<2;++_){var tt=$[_];for(B=0;B<tt.length;++B)F(n,v,X[rt=31&tt[B]]),v+=j[rt],rt>15&&(F(n,v,tt[B]>>5&127),v+=tt[B]>>12)}}else V=w,Y=m,J=z,K=b;for(B=0;B<c;++B){var nt=a[B];if(nt>255){var rt;E(n,v,V[257+(rt=nt>>18&31)]),v+=Y[rt+257],rt>7&&(F(n,v,nt>>23&31),v+=e[rt]);var it=31&nt;E(n,v,J[it]),v+=K[it],it>3&&(E(n,v,nt>>5&8191),v+=o[it])}else E(n,v,V[nt]),v+=Y[nt]}return E(n,v,V[256]),v+Y[256]},H=new i([65540,131080,131088,131104,262176,1048704,1048832,2114560,2117632]),j=new n(0),N=function(t,s,a,u,h,c){var l=c.z||t.length,v=new n(u+l+5*(1+Math.ceil(l/7e3))+h),d=v.subarray(u,v.length-h),g=c.l,y=7&(c.r||0);if(s){y&&(d[0]=c.r>>3);for(var m=H[s-1],b=m>>13,w=8191&m,x=(1<<a)-1,z=c.p||new r(32768),k=c.h||new r(x+1),M=Math.ceil(a/3),S=2*M,A=function(n){return(t[n]^t[n+1]<<M^t[n+2]<<S)&x},C=new i(25e3),I=new r(288),U=new r(32),F=0,E=0,Z=c.i||0,q=0,O=c.w||0,G=0;Z+2<l;++Z){var j=A(Z),N=32767&Z,P=k[j];if(z[N]=P,k[j]=N,O<=Z){var V=l-Z;if((F>7e3||q>24576)&&(V>423||!g)){y=B(t,d,0,C,I,U,E,q,G,Z-G,y),q=F=E=0,G=Z;for(var Y=0;Y<286;++Y)I[Y]=0;for(Y=0;Y<30;++Y)U[Y]=0}var J=2,K=0,Q=w,R=N-P&32767;if(V>2&&j==A(Z-R))for(var W=Math.min(b,V)-1,X=Math.min(32767,Z),$=Math.min(258,V);R<=X&&--Q&&N!=P;){if(t[Z+J]==t[Z+J-R]){for(var _=0;_<$&&t[Z+_]==t[Z+_-R];++_);if(_>J){if(J=_,K=R,_>W)break;var tt=Math.min(R,_-2),nt=0;for(Y=0;Y<tt;++Y){var rt=Z-R+Y&32767,it=rt-z[rt]&32767;it>nt&&(nt=it,P=rt)}}}R+=(N=P)-(P=z[N])&32767}if(K){C[q++]=268435456|f[J]<<18|p[K];var et=31&f[J],ot=31&p[K];E+=e[et]+o[ot],++I[257+et],++U[ot],O=Z+J,++F}else C[q++]=t[Z],++I[t[Z]]}}for(Z=Math.max(Z,O);Z<l;++Z)C[q++]=t[Z],++I[t[Z]];y=B(t,d,g,C,I,U,E,q,G,Z-G,y),g||(c.r=7&y|d[y/8|0]<<3,y-=7,c.h=k,c.p=z,c.i=Z,c.w=O)}else{for(Z=c.w||0;Z<l+g;Z+=65535){var st=Z+65535;st>=l&&(d[y/8|0]=g,st=l),y=L(d,y+1,t.subarray(Z,st))}c.i=l}return D(v,0,u+T(y)+h)},P=function(){for(var t=new Int32Array(256),n=0;n<256;++n){for(var r=n,i=9;--i;)r=(1&r&&-306674912)^r>>>1;t[n]=r}return t}(),V=function(){var t=-1;return{p:function(n){for(var r=t,i=0;i<n.length;++i)r=P[255&r^n[i]]^r>>>8;t=r},d:function(){return~t}}},Y=function(){var t=1,n=0;return{p:function(r){for(var i=t,e=n,o=0|r.length,s=0;s!=o;){for(var a=Math.min(s+2655,o);s<a;++s)e+=i+=r[s];i=(65535&i)+15*(i>>16),e=(65535&e)+15*(e>>16)}t=i,n=e},d:function(){return(255&(t%=65521))<<24|(65280&t)<<8|(255&(n%=65521))<<8|n>>8}}},J=function(t,r,i,e,o){if(!o&&(o={l:1},r.dictionary)){var s=r.dictionary.subarray(-32768),a=new n(s.length+t.length);a.set(s),a.set(t,s.length),t=a,o.w=s.length}return N(t,null==r.level?6:r.level,null==r.mem?o.l?Math.ceil(1.5*Math.max(8,Math.min(13,Math.log(t.length)))):20:12+r.mem,i,e,o)},K=function(t,n){var r={};for(var i in t)r[i]=t[i];for(var i in n)r[i]=n[i];return r},Q=function(t,n,r){for(var i=t(),e=""+t,o=e.slice(e.indexOf("[")+1,e.lastIndexOf("]")).replace(/\s+/g,"").split(","),s=0;s<i.length;++s){var a=i[s],u=o[s];if("function"==typeof a){n+=";"+u+"=";var h=""+a;if(a.prototype)if(-1!=h.indexOf("[native code]")){var f=h.indexOf(" ",8)+1;n+=h.slice(f,h.indexOf("(",f))}else for(var c in n+=h,a.prototype)n+=";"+u+".prototype."+c+"="+a.prototype[c];else n+=h}else r[u]=a}return n},R=[],W=function(t){var n=[];for(var r in t)t[r].buffer&&n.push((t[r]=new t[r].constructor(t[r])).buffer);return n},X=function(n,r,i,e){if(!R[i]){for(var o="",s={},a=n.length-1,u=0;u<a;++u)o=Q(n[u],o,s);R[i]={c:Q(n[a],o,s),e:s}}var h=K({},R[i].e);return(0,t.default)(R[i].c+";onmessage=function(e){for(var k in e.data)self[k]=e.data[k];onmessage="+r+"}",i,h,W(h),e)},$=function(){return[n,r,i,e,o,s,h,l,x,k,v,C,y,M,S,A,T,D,I,U,Tt,et,ot]},_=function(){return[n,r,i,e,o,s,f,p,w,m,z,b,v,H,j,y,F,E,Z,q,O,G,L,B,T,D,N,J,kt,et]},tt=function(){return[pt,gt,lt,V,P]},nt=function(){return[vt,dt]},rt=function(){return[yt,lt,Y]},it=function(){return[mt]},et=function(t){return postMessage(t,[t.buffer])},ot=function(t){return t&&{out:t.size&&new n(t.size),dictionary:t.dictionary}},st=function(t,n,r,i,e,o){var s=X(r,i,e,function(t,n){s.terminate(),o(t,n)});return s.postMessage([t,n],n.consume?[t.buffer]:[]),function(){s.terminate()}},at=function(t){return t.ondata=function(t,n){return postMessage([t,n],[t.buffer])},function(n){n.data[0]?(t.push(n.data[0],n.data[1]),postMessage([n.data[0].length])):t.flush(n.data[1])}},ut=function(t,n,r,i,e,o,s){var a,u=X(t,i,e,function(t,r){t?(u.terminate(),n.ondata.call(n,t)):Array.isArray(r)?1==r.length?(n.queuedSize-=r[0],n.ondrain&&n.ondrain(r[0])):(r[1]&&u.terminate(),n.ondata.call(n,t,r[0],r[1])):s(r)});u.postMessage(r),n.queuedSize=0,n.push=function(t,r){n.ondata||I(5),a&&n.ondata(I(4,0,1),null,!!r),n.queuedSize+=t.length,u.postMessage([t,a=r],t.buffer instanceof ArrayBuffer?[t.buffer]:[])},n.terminate=function(){u.terminate()},o&&(n.flush=function(t){u.postMessage([0,t])})},ht=function(t,n){return t[n]|t[n+1]<<8},ft=function(t,n){return(t[n]|t[n+1]<<8|t[n+2]<<16|t[n+3]<<24)>>>0},ct=function(t,n){return ft(t,n)+4294967296*ft(t,n+4)},lt=function(t,n,r){for(;r;++n)t[n]=r,r>>>=8},pt=function(t,n){var r=n.filename;if(t[0]=31,t[1]=139,t[2]=8,t[8]=n.level<2?4:9==n.level?2:0,t[9]=3,0!=n.mtime&&lt(t,4,Math.floor(new Date(n.mtime||Date.now())/1e3)),r){t[3]=8;for(var i=0;i<=r.length;++i)t[i+10]=r.charCodeAt(i)}},vt=function(t){31==t[0]&&139==t[1]&&8==t[2]||I(6,"invalid gzip data");var n=t[3],r=10;4&n&&(r+=2+(t[10]|t[11]<<8));for(var i=(n>>3&1)+(n>>4&1);i>0;i-=!t[r++]);return r+(2&n)},dt=function(t){var n=t.length;return(t[n-4]|t[n-3]<<8|t[n-2]<<16|t[n-1]<<24)>>>0},gt=function(t){return 10+(t.filename?t.filename.length+1:0)},yt=function(t,n){var r=n.level,i=0==r?0:r<6?1:9==r?3:2;if(t[0]=120,t[1]=i<<6|(n.dictionary&&32),t[1]|=31-(t[0]<<8|t[1])%31,n.dictionary){var e=Y();e.p(n.dictionary),lt(t,2,e.d())}},mt=function(t,n){return(8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31)&&I(6,"invalid zlib data"),(t[1]>>5&1)==+!n&&I(6,"invalid zlib data: "+(32&t[1]?"need":"unexpected")+" dictionary"),2+(t[1]>>3&4)};function bt(t,n){return"function"==typeof t&&(n=t,t={}),this.ondata=n,t}var wt=function(){function t(t,r){if("function"==typeof t&&(r=t,t={}),this.ondata=r,this.o=t||{},this.s={l:0,i:32768,w:32768,z:32768},this.b=new n(98304),this.o.dictionary){var i=this.o.dictionary.subarray(-32768);this.b.set(i,32768-i.length),this.s.i=32768-i.length}}return t.prototype.p=function(t,n){this.ondata(J(t,this.o,0,0,this.s),n)},t.prototype.push=function(t,r){this.ondata||I(5),this.s.l&&I(4);var i=t.length+this.s.z;if(i>this.b.length){if(i>2*this.b.length-32768){var e=new n(-32768&i);e.set(this.b.subarray(0,this.s.z)),this.b=e}var o=this.b.length-this.s.z;this.b.set(t.subarray(0,o),this.s.z),this.s.z=this.b.length,this.p(this.b,!1),this.b.set(this.b.subarray(-32768)),this.b.set(t.subarray(o),32768),this.s.z=t.length-o+32768,this.s.i=32766,this.s.w=32768}else this.b.set(t,this.s.z),this.s.z+=t.length;this.s.l=1&r,(this.s.z>this.s.w+8191||r)&&(this.p(this.b,r||!1),this.s.w=this.s.i,this.s.i-=2),r&&(this.s=this.o={},this.b=j)},t.prototype.flush=function(t){if(this.ondata||I(5),this.s.l&&I(4),this.p(this.b,!1),this.s.w=this.s.i,this.s.i-=2,t){var r=new n(6);r[0]=this.s.r>>3;var i=L(r,this.s.r,j);this.s.r=0,this.ondata(r.subarray(0,i>>3),!1)}},t}();_e.Deflate=wt;var xt=function(){return function(t,n){ut([_,function(){return[at,wt]}],this,bt.call(this,t,n),function(t){var n=new wt(t.data);onmessage=at(n)},6,1)}}();function zt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_],function(t){return et(kt(t.data[0],t.data[1]))},0,r)}function kt(t,n){return J(t,n||{},0,0)}_e.AsyncDeflate=xt;var Mt=function(){function t(t,r){"function"==typeof t&&(r=t,t={}),this.ondata=r;var i=t&&t.dictionary&&t.dictionary.subarray(-32768);this.s={i:0,b:i?i.length:0},this.o=new n(32768),this.p=new n(0),i&&this.o.set(i)}return t.prototype.e=function(t){if(this.ondata||I(5),this.d&&I(4),this.p.length){if(t.length){var r=new n(this.p.length+t.length);r.set(this.p),r.set(t,this.p.length),this.p=r}}else this.p=t},t.prototype.c=function(t){this.s.i=+(this.d=t||!1);var n=this.s.b,r=U(this.p,this.s,this.o);this.ondata(D(r,n,this.s.b),this.d),this.o=D(r,this.s.b-32768),this.s.b=this.o.length,this.p=D(this.p,this.s.p/8|0),this.s.p&=7},t.prototype.push=function(t,n){this.e(t),this.c(n)},t}();_e.Inflate=Mt;var St=function(){return function(t,n){ut([$,function(){return[at,Mt]}],this,bt.call(this,t,n),function(t){var n=new Mt(t.data);onmessage=at(n)},7,0)}}();function At(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$],function(t){return et(Tt(t.data[0],ot(t.data[1])))},1,r)}function Tt(t,n){return U(t,{i:2},n&&n.out,n&&n.dictionary)}_e.AsyncInflate=St;var Dt=function(){function t(t,n){this.c=V(),this.l=0,this.v=1,wt.call(this,t,n)}return t.prototype.push=function(t,n){this.c.p(t),this.l+=t.length,wt.prototype.push.call(this,t,n)},t.prototype.p=function(t,n){var r=J(t,this.o,this.v&&gt(this.o),n&&8,this.s);this.v&&(pt(r,this.o),this.v=0),n&&(lt(r,r.length-8,this.c.d()),lt(r,r.length-4,this.l)),this.ondata(r,n)},t.prototype.flush=function(t){wt.prototype.flush.call(this,t)},t}();_e.Gzip=Dt,_e.Compress=Dt;var Ct=function(){return function(t,n){ut([_,tt,function(){return[at,wt,Dt]}],this,bt.call(this,t,n),function(t){var n=new Dt(t.data);onmessage=at(n)},8,1)}}();function It(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_,tt,function(){return[Ut]}],function(t){return et(Ut(t.data[0],t.data[1]))},2,r)}function Ut(t,n){n||(n={});var r=V(),i=t.length;r.p(t);var e=J(t,n,gt(n),8),o=e.length;return pt(e,n),lt(e,o-8,r.d()),lt(e,o-4,i),e}_e.AsyncGzip=Ct,_e.AsyncCompress=Ct;var Ft=function(){function t(t,n){this.v=1,this.r=0,Mt.call(this,t,n)}return t.prototype.push=function(t,r){if(Mt.prototype.e.call(this,t),this.r+=t.length,this.v){var i=this.p.subarray(this.v-1),e=i.length>3?vt(i):4;if(e>i.length){if(!r)return}else this.v>1&&this.onmember&&this.onmember(this.r-i.length);this.p=i.subarray(e),this.v=0}Mt.prototype.c.call(this,0),this.s.f&&!this.s.l?(this.v=T(this.s.p)+9,this.s={i:0},this.o=new n(0),this.push(new n(0),r)):r&&Mt.prototype.c.call(this,r)},t}();_e.Gunzip=Ft;var Et=function(){return function(t,n){var r=this;ut([$,nt,function(){return[at,Mt,Ft]}],this,bt.call(this,t,n),function(t){var n=new Ft(t.data);n.onmember=function(t){return postMessage(t)},onmessage=at(n)},9,0,function(t){return r.onmember&&r.onmember(t)})}}();function Zt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$,nt,function(){return[qt]}],function(t){return et(qt(t.data[0],t.data[1]))},3,r)}function qt(t,r){var i=vt(t);return i+8>t.length&&I(6,"invalid gzip data"),U(t.subarray(i,-8),{i:2},r&&r.out||new n(dt(t)),r&&r.dictionary)}_e.AsyncGunzip=Et;var Ot=function(){function t(t,n){this.c=Y(),this.v=1,wt.call(this,t,n)}return t.prototype.push=function(t,n){this.c.p(t),wt.prototype.push.call(this,t,n)},t.prototype.p=function(t,n){var r=J(t,this.o,this.v&&(this.o.dictionary?6:2),n&&4,this.s);this.v&&(yt(r,this.o),this.v=0),n&&lt(r,r.length-4,this.c.d()),this.ondata(r,n)},t.prototype.flush=function(t){wt.prototype.flush.call(this,t)},t}();_e.Zlib=Ot;var Gt=function(){return function(t,n){ut([_,rt,function(){return[at,wt,Ot]}],this,bt.call(this,t,n),function(t){var n=new Ot(t.data);onmessage=at(n)},10,1)}}();function Lt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_,rt,function(){return[Bt]}],function(t){return et(Bt(t.data[0],t.data[1]))},4,r)}function Bt(t,n){n||(n={});var r=Y();r.p(t);var i=J(t,n,n.dictionary?6:2,4);return yt(i,n),lt(i,i.length-4,r.d()),i}_e.AsyncZlib=Gt;var Ht=function(){function t(t,n){Mt.call(this,t,n),this.v=t&&t.dictionary?2:1}return t.prototype.push=function(t,n){if(Mt.prototype.e.call(this,t),this.v){if(this.p.length<6&&!n)return;this.p=this.p.subarray(mt(this.p,this.v-1)),this.v=0}n&&(this.p.length<4&&I(6,"invalid zlib data"),this.p=this.p.subarray(0,-4)),Mt.prototype.c.call(this,n)},t}();_e.Unzlib=Ht;var jt=function(){return function(t,n){ut([$,it,function(){return[at,Mt,Ht]}],this,bt.call(this,t,n),function(t){var n=new Ht(t.data);onmessage=at(n)},11,0)}}();function Nt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$,it,function(){return[Pt]}],function(t){return et(Pt(t.data[0],ot(t.data[1])))},5,r)}function Pt(t,n){return U(t.subarray(mt(t,n&&n.dictionary),-4),{i:2},n&&n.out,n&&n.dictionary)}_e.AsyncUnzlib=jt;var Vt=function(){function t(t,n){this.o=bt.call(this,t,n)||{},this.G=Ft,this.I=Mt,this.Z=Ht}return t.prototype.i=function(){var t=this;this.s.ondata=function(n,r){t.ondata(n,r)}},t.prototype.push=function(t,r){if(this.ondata||I(5),this.s)this.s.push(t,r);else{if(this.p&&this.p.length){var i=new n(this.p.length+t.length);i.set(this.p),i.set(t,this.p.length)}else this.p=t;this.p.length>2&&(this.s=31==this.p[0]&&139==this.p[1]&&8==this.p[2]?new this.G(this.o):8!=(15&this.p[0])||this.p[0]>>4>7||(this.p[0]<<8|this.p[1])%31?new this.I(this.o):new this.Z(this.o),this.i(),this.s.push(this.p,r),this.p=null)}},t}();_e.Decompress=Vt;var Yt=function(){function t(t,n){Vt.call(this,t,n),this.queuedSize=0,this.G=Et,this.I=St,this.Z=jt}return t.prototype.i=function(){var t=this;this.s.ondata=function(n,r,i){t.ondata(n,r,i)},this.s.ondrain=function(n){t.queuedSize-=n,t.ondrain&&t.ondrain(n)}},t.prototype.push=function(t,n){this.queuedSize+=t.length,Vt.prototype.push.call(this,t,n)},t}();function Jt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),31==t[0]&&139==t[1]&&8==t[2]?Zt(t,n,r):8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31?At(t,n,r):Nt(t,n,r)}function Kt(t,n){return 31==t[0]&&139==t[1]&&8==t[2]?qt(t,n):8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31?Tt(t,n):Pt(t,n)}_e.AsyncDecompress=Yt;var Qt=function(t,r,i,e){for(var o in t){var s=t[o],a=r+o,u=e;Array.isArray(s)&&(u=K(e,s[1]),s=s[0]),ArrayBuffer.isView(s)?i[a]=[s,u]:(i[a+="/"]=[new n(0),u],Qt(s,a,i,e))}},Rt="undefined"!=typeof TextEncoder&&new TextEncoder,Wt="undefined"!=typeof TextDecoder&&new TextDecoder,Xt=0;try{Wt.decode(j,{stream:!0}),Xt=1}catch(t){}var $t=function(t){for(var n="",r=0;;){var i=t[r++],e=(i>127)+(i>223)+(i>239);if(r+e>t.length)return{s:n,r:D(t,r-1)};e?3==e?(i=((15&i)<<18|(63&t[r++])<<12|(63&t[r++])<<6|63&t[r++])-65536,n+=String.fromCharCode(55296|i>>10,56320|1023&i)):n+=String.fromCharCode(1&e?(31&i)<<6|63&t[r++]:(15&i)<<12|(63&t[r++])<<6|63&t[r++]):n+=String.fromCharCode(i)}},_t=function(){function t(t){this.ondata=t,Xt?this.t=new TextDecoder:this.p=j}return t.prototype.push=function(t,r){if(this.ondata||I(5),r=!!r,this.t)return this.ondata(this.t.decode(t,{stream:!0}),r),void(r&&(this.t.decode().length&&I(8),this.t=null));this.p||I(4);var i=new n(this.p.length+t.length);i.set(this.p),i.set(t,this.p.length);var e=$t(i),o=e.s,s=e.r;r?(s.length&&I(8),this.p=null):this.p=s,this.ondata(o,r)},t}();_e.DecodeUTF8=_t;var tn=function(){function t(t){this.ondata=t}return t.prototype.push=function(t,n){this.ondata||I(5),this.d&&I(4),this.ondata(nn(t),this.d=n||!1)},t}();function nn(t,r){if(r){for(var i=new n(t.length),e=0;e<t.length;++e)i[e]=t.charCodeAt(e);return i}if(Rt)return Rt.encode(t);var o=t.length,s=new n(t.length+(t.length>>1)),a=0,u=function(t){s[a++]=t};for(e=0;e<o;++e){if(a+5>s.length){var h=new n(a+8+(o-e<<1));h.set(s),s=h}var f=t.charCodeAt(e);f<128||r?u(f):f<2048?(u(192|f>>6),u(128|63&f)):f>55295&&f<57344?(u(240|(f=65536+(1047552&f)|1023&t.charCodeAt(++e))>>18),u(128|f>>12&63),u(128|f>>6&63),u(128|63&f)):(u(224|f>>12),u(128|f>>6&63),u(128|63&f))}return D(s,0,a)}function rn(t,n){if(n){for(var r="",i=0;i<t.length;i+=16384)r+=String.fromCharCode.apply(null,t.subarray(i,i+16384));return r}if(Wt)return Wt.decode(t);var e=$t(t),o=e.s;return(r=e.r).length&&I(8),o}_e.EncodeUTF8=tn;var en=function(t){return 1==t?3:t<6?2:9==t?1:0},on=function(t,n){return n+30+ht(t,n+26)+ht(t,n+28)},sn=function(t,n,r){var i=ht(t,n+28),e=ht(t,n+30),o=rn(t.subarray(n+46,n+46+i),!(2048&ht(t,n+8))),s=n+46+i,a=an(t,s,e,r,ft(t,n+20),ft(t,n+24),ft(t,n+42)),u=a[0],h=a[1],f=a[2];return[ht(t,n+10),u,h,o,s+e+ht(t,n+32),f]},an=function(t,n,r,i,e,o,s){var a=4294967295==e,u=4294967295==o,h=4294967295==s,f=n+r;if(i&&a+u+h){for(;n+4<f;n+=4+ht(t,n+2))if(1==ht(t,n))return[a?ct(t,n+4+8*u):e,u?ct(t,n+4):o,h?ct(t,n+4+8*(u+a)):s,1];i<2&&I(13)}return[e,o,s,0]},un=function(t){var n=0;if(t)for(var r in t){var i=t[r].length;i>65535&&I(9),n+=i+4}return n},hn=function(t,n,r,i,e,o,s,a){var u=i.length,h=r.extra,f=a&&a.length,c=un(h);lt(t,n,null!=s?33639248:67324752),n+=4,null!=s&&(t[n++]=20,t[n++]=r.os),t[n]=20,n+=2,t[n++]=r.flag<<1|(o<0&&8),t[n++]=e&&8,t[n++]=255&r.compression,t[n++]=r.compression>>8;var l=new Date(null==r.mtime?Date.now():r.mtime),p=l.getFullYear()-1980;if((p<0||p>119)&&I(10),lt(t,n,p<<25|l.getMonth()+1<<21|l.getDate()<<16|l.getHours()<<11|l.getMinutes()<<5|l.getSeconds()>>1),n+=4,-1!=o&&(lt(t,n,r.crc),lt(t,n+4,o<0?-o-2:o),lt(t,n+8,r.size)),lt(t,n+12,u),lt(t,n+14,c),n+=16,null!=s&&(lt(t,n,f),lt(t,n+6,r.attrs),lt(t,n+10,s),n+=14),t.set(i,n),n+=u,c)for(var v in h){var d=h[v],g=d.length;lt(t,n,+v),lt(t,n+2,g),t.set(d,n+4),n+=4+g}return f&&(t.set(a,n),n+=f),n},fn=function(t,n,r,i,e){lt(t,n,101010256),lt(t,n+8,r),lt(t,n+10,r),lt(t,n+12,i),lt(t,n+16,e)},cn=function(){function t(t){this.filename=t,this.c=V(),this.size=0,this.compression=0}return t.prototype.process=function(t,n){this.ondata(null,t,n)},t.prototype.push=function(t,n){this.ondata||I(5),this.c.p(t),this.size+=t.length,n&&(this.crc=this.c.d()),this.process(t,n||!1)},t}();_e.ZipPassThrough=cn;var ln=function(){function t(t,n){var r=this;n||(n={}),cn.call(this,t),this.d=new wt(n,function(t,n){r.ondata(null,t,n)}),this.compression=8,this.flag=en(n.level)}return t.prototype.process=function(t,n){try{this.d.push(t,n)}catch(t){this.ondata(t,null,n)}},t.prototype.push=function(t,n){cn.prototype.push.call(this,t,n)},t}();_e.ZipDeflate=ln;var pn=function(){function t(t,n){var r=this;n||(n={}),cn.call(this,t),this.d=new xt(n,function(t,n,i){r.ondata(t,n,i)}),this.compression=8,this.flag=en(n.level),this.terminate=this.d.terminate}return t.prototype.process=function(t,n){this.d.push(t,n)},t.prototype.push=function(t,n){cn.prototype.push.call(this,t,n)},t}();_e.AsyncZipDeflate=pn;var vn=function(){function t(t){this.ondata=t,this.u=[],this.d=1}return t.prototype.add=function(t){var r=this;if(this.ondata||I(5),2&this.d)this.ondata(I(4+8*(1&this.d),0,1),null,!1);else{var i=nn(t.filename),e=i.length,o=t.comment,s=o&&nn(o),a=e!=t.filename.length||s&&o.length!=s.length,u=e+un(t.extra)+30;e>65535&&this.ondata(I(11,0,1),null,!1);var h=new n(u);hn(h,0,t,i,a,-1);var f=[h],c=function(){for(var t=0,n=f;t<n.length;t++)r.ondata(null,n[t],!1);f=[]},l=this.d;this.d=0;var p=this.u.length,v=K(t,{f:i,u:a,o:s,t:function(){t.terminate&&t.terminate()},r:function(){if(c(),l){var t=r.u[p+1];t?t.r():r.d=1}l=1}}),d=0;t.ondata=function(i,e,o){if(i)r.ondata(i,e,o),r.terminate();else if(d+=e.length,f.push(e),o){var s=new n(16);lt(s,0,134695760),lt(s,4,t.crc),lt(s,8,d),lt(s,12,t.size),f.push(s),v.c=d,v.b=u+d+16,v.crc=t.crc,v.size=t.size,l&&v.r(),l=1}else l&&c()},this.u.push(v)}},t.prototype.end=function(){var t=this;2&this.d?this.ondata(I(4+8*(1&this.d),0,1),null,!0):(this.d?this.e():this.u.push({r:function(){1&t.d&&(t.u.splice(-1,1),t.e())},t:function(){}}),this.d=3)},t.prototype.e=function(){for(var t=0,r=0,i=0,e=0,o=this.u;e<o.length;e++)i+=46+(h=o[e]).f.length+un(h.extra)+(h.o?h.o.length:0);for(var s=new n(i+22),a=0,u=this.u;a<u.length;a++){var h;hn(s,t,h=u[a],h.f,h.u,-h.c-2,r,h.o),t+=46+h.f.length+un(h.extra)+(h.o?h.o.length:0),r+=h.b}fn(s,t,this.u.length,i,r),this.ondata(null,s,!0),this.d=2},t.prototype.terminate=function(){for(var t=0,n=this.u;t<n.length;t++)n[t].t();this.d=2},t}();function dn(t,r,i){i||(i=r,r={}),"function"!=typeof i&&I(7);var e={};Qt(t,"",e,r);var o=Object.keys(e),s=o.length,a=0,u=0,h=s,f=Array(s),c=[],l=function(){for(var t=0;t<c.length;++t)c[t]()},p=function(t,n){xn(function(){i(t,n)})};xn(function(){p=i});var v=function(){var t=new n(u+22),r=a,i=u-a;u=0;for(var e=0;e<h;++e){var o=f[e];try{var s=o.c.length;hn(t,u,o,o.f,o.u,s);var c=30+o.f.length+un(o.extra),l=u+c;t.set(o.c,l),hn(t,a,o,o.f,o.u,s,u,o.m),a+=16+c+(o.m?o.m.length:0),u=l+s}catch(t){return p(t,null)}}fn(t,a,f.length,i,r),p(null,t)};s||v();for(var d=function(t){var n=o[t],r=e[n],i=r[0],h=r[1],d=V(),g=i.length;d.p(i);var y=nn(n),m=y.length,b=h.comment,w=b&&nn(b),x=w&&w.length,z=un(h.extra),k=0==h.level?0:8,M=function(r,i){if(r)l(),p(r,null);else{var e=i.length;f[t]=K(h,{size:g,crc:d.d(),c:i,f:y,m:w,u:m!=n.length||w&&b.length!=x,compression:k}),a+=30+m+z+e,u+=76+2*(m+z)+(x||0)+e,--s||v()}};if(m>65535&&M(I(11,0,1),null),k)if(g<16e4)try{M(null,kt(i,h))}catch(t){M(t,null)}else c.push(zt(i,h,M));else M(null,i)},g=0;g<h;++g)d(g);return l}function gn(t,r){r||(r={});var i={},e=[];Qt(t,"",i,r);var o=0,s=0;for(var a in i){var u=i[a],h=u[0],f=u[1],c=0==f.level?0:8,l=(M=nn(a)).length,p=f.comment,v=p&&nn(p),d=v&&v.length,g=un(f.extra);l>65535&&I(11);var y=c?kt(h,f):h,m=y.length,b=V();b.p(h),e.push(K(f,{size:h.length,crc:b.d(),c:y,f:M,m:v,u:l!=a.length||v&&p.length!=d,o:o,compression:c})),o+=30+l+g+m,s+=76+2*(l+g)+(d||0)+m}for(var w=new n(s+22),x=o,z=s-o,k=0;k<e.length;++k){var M;hn(w,(M=e[k]).o,M,M.f,M.u,M.c.length);var S=30+M.f.length+un(M.extra);w.set(M.c,M.o+S),hn(w,o,M,M.f,M.u,M.c.length,M.o,M.m),o+=16+S+(M.m?M.m.length:0)}return fn(w,o,e.length,z,x),w}_e.Zip=vn;var yn=function(){function t(){}return t.prototype.push=function(t,n){this.ondata(null,t,n)},t.compression=0,t}();_e.UnzipPassThrough=yn;var mn=function(){function t(){var t=this;this.i=new Mt(function(n,r){t.ondata(null,n,r)})}return t.prototype.push=function(t,n){try{this.i.push(t,n)}catch(t){this.ondata(t,null,n)}},t.compression=8,t}();_e.UnzipInflate=mn;var bn=function(){function t(t,n){var r=this;n<32e4?this.i=new Mt(function(t,n){r.ondata(null,t,n)}):(this.i=new St(function(t,n,i){r.ondata(t,n,i)}),this.terminate=this.i.terminate)}return t.prototype.push=function(t,n){this.i.terminate&&(t=D(t,0)),this.i.push(t,n)},t.compression=8,t}();_e.AsyncUnzipInflate=bn;var wn=function(){function t(t){this.onfile=t,this.k=[],this.o={0:yn},this.p=j}return t.prototype.push=function(t,r){var i=this;if(this.onfile||I(5),this.p||I(4),this.c>0){var e=Math.min(this.c,t.length),o=t.subarray(0,e);if(this.c-=e,this.d?this.d.push(o,!this.c):this.k[0].push(o),(t=t.subarray(e)).length)return this.push(t,r)}else{var s=0,a=0,u=void 0,h=void 0;this.p.length?t.length?((h=new n(this.p.length+t.length)).set(this.p),h.set(t,this.p.length)):h=this.p:h=t;for(var f=h.length,c=this.c,l=c&&this.d,p=function(){var t=ft(h,a);if(67324752==t){s=1,u=a,v.d=null,v.c=0;var n=ht(h,a+6),r=ht(h,a+8),e=2048&n,o=8&n,l=ht(h,a+26),p=ht(h,a+28);if(f>a+30+l+p){var d=[];v.k.unshift(d),s=2;var g,y=ft(h,a+18),m=ft(h,a+22),b=rn(h.subarray(a+30,a+=30+l),!e),w=an(h,a,p,2,y,m,0),x=w[0],z=w[1];o&&(x=-1-w[3]),a+=p,v.c=x;var k={name:b,compression:r,start:function(){if(k.ondata||I(5),x){var t=i.o[r];t||k.ondata(I(14,"unknown compression type "+r,1),null,!1),(g=x<0?new t(b):new t(b,x,z)).ondata=function(t,n,r){k.ondata(t,n,r)};for(var n=0,e=d;n<e.length;n++)g.push(e[n],!1);i.k[0]==d&&i.c?i.d=g:g.push(j,!0)}else k.ondata(null,j,!0)},terminate:function(){g&&g.terminate&&g.terminate()}};x>=0&&(k.size=x,k.originalSize=z),v.onfile(k)}return"break"}if(c){if(134695760==t)return u=a+=12+(-2==c&&8),s=3,v.c=0,"break";if(33639248==t)return u=a-=4,s=3,v.c=0,"break"}},v=this;a<f-4&&"break"!==p();++a);if(this.p=j,c<0){var d=h.subarray(0,s?u-12-(-2==c&&8)-(134695760==ft(h,u-16)&&4):a);l?l.push(d,!!s):this.k[+(2==s)].push(d)}if(2&s)return this.push(h.subarray(a),r);this.p=h.subarray(a)}r&&(this.c&&I(13),this.p=null)},t.prototype.register=function(t){this.o[t.compression]=t},t}();_e.Unzip=wn;var xn="function"==typeof queueMicrotask?queueMicrotask:"function"==typeof setTimeout?setTimeout:function(t){t()};function zn(t,r,i){i||(i=r,r={}),"function"!=typeof i&&I(7);var e=[],o=function(){for(var t=0;t<e.length;++t)e[t]()},s={},a=function(t,n){xn(function(){i(t,n)})};xn(function(){a=i});for(var u=t.length-22;101010256!=ft(t,u);--u)if(!u||t.length-u>65558)return a(I(13,0,1),null),o;var h=ht(t,u+8);if(h){var f=h,c=ft(t,u+16),l=117853008==ft(t,u-20);if(l){var p=ft(t,u-12);(l=101075792==ft(t,p))&&(f=h=ft(t,p+32),c=ft(t,p+48))}for(var v=r&&r.filter,d=function(r){var i=sn(t,c,l),u=i[0],f=i[1],p=i[2],d=i[3],g=i[4],y=on(t,i[5]);c=g;var m=function(t,n){t?(o(),a(t,null)):(n&&(s[d]=n),--h||a(null,s))};if(!v||v({name:d,size:f,originalSize:p,compression:u}))if(u)if(8==u){var b=t.subarray(y,y+f);if(p<524288||f>.8*p)try{m(null,Tt(b,{out:new n(p)}))}catch(t){m(t,null)}else e.push(At(b,{size:p},m))}else m(I(14,"unknown compression type "+u,1),null);else m(null,D(t,y,y+f));else m(null,null)},g=0;g<f;++g)d()}else a(null,{});return o}function kn(t,r){for(var i={},e=t.length-22;101010256!=ft(t,e);--e)(!e||t.length-e>65558)&&I(13);var o=ht(t,e+8);if(!o)return{};var s=ft(t,e+16),a=117853008==ft(t,e-20);if(a){var u=ft(t,e-12);(a=101075792==ft(t,u))&&(o=ft(t,u+32),s=ft(t,u+48))}for(var h=r&&r.filter,f=0;f<o;++f){var c=sn(t,s,a),l=c[0],p=c[1],v=c[2],d=c[3],g=c[4],y=on(t,c[5]);s=g,h&&!h({name:d,size:p,originalSize:v,compression:l})||(l?8==l?i[d]=Tt(t.subarray(y,y+p),{out:new n(v)}):I(14,"unknown compression type "+l):i[d]=D(t,y,y+p))}return i}return _e});</script>
+<!-- app (built from src/js/*.js by build.mjs; import/export stripped, one module scope) -->
+<script type="module">
+// ===== js/rng.js =====
+// Seeded RNG — xmur3 (string→32-bit seed) + mulberry32 (seed→PRNG). Deterministic, no deps.
+// Determinism contract (research-and-design §7): same seed string → same stream, everywhere.
+function xmur3(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function () {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// rng object seeded from a string. .next() ∈ [0,1) + sampling helpers used by Randomize.
+function makeRng(seedStr) {
+  const seedFn = xmur3(String(seedStr));
+  const rand = mulberry32(seedFn());
+  return {
+    next: rand,
+    float: (lo, hi) => lo + (hi - lo) * rand(),
+    int: (lo, hi) => Math.floor(lo + (hi - lo + 1) * rand()),
+    bool: (p = 0.5) => rand() < p,
+    pick: (arr) => arr[Math.floor(rand() * arr.length)],
+    // triangular distribution on [lo,hi] peaked at mode — the default aesthetic dist
+    tri: (lo, mode, hi) => {
+      if (hi <= lo) return lo;
+      const u = rand(), c = (mode - lo) / (hi - lo);
+      return u < c ? lo + Math.sqrt(u * (hi - lo) * (mode - lo))
+                   : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode));
+    },
+    // log-uniform on [lo,hi] (lo>0) — counts/scales spanning an order of magnitude
+    logUniform: (lo, hi) => Math.exp(Math.log(lo) + (Math.log(hi) - Math.log(lo)) * rand()),
+    // discrete weighted: items = [{v, w}]
+    weighted: (items) => {
+      let tot = 0; for (const it of items) tot += it.w;
+      let x = rand() * tot;
+      for (const it of items) { if ((x -= it.w) <= 0) return it.v; }
+      return items[items.length - 1].v;
+    },
+  };
+}
+
+
+// ===== js/color.js =====
+// PSG color engine — the OKLCH "nice-gamut manifold" + the relations (color-system-design.md,
+// color-relations.md). Chroma is a DEPENDENT variable read off the sRGB gamut ceiling, so colours
+// are sampled as (hue H, vertical offset dL off the chroma ridge) and never clip. Pure, node-testable.
+
+// ---------- Ottosson OKLab <-> linear sRGB ----------
+function oklabToLinear(L, a, b) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+  ];
+}
+function linToSrgb(c) { c = Math.max(0, Math.min(1, c)); return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; }
+function srgbToLin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+const DEG = Math.PI / 180;
+
+// oklch -> {rgb:[0..255], inGamut}. inGamut tested on RAW linear (before clamp), eps for fp.
+function oklchToRgb(L, C, H) {
+  const a = C * Math.cos(H * DEG), b = C * Math.sin(H * DEG);
+  const lin = oklabToLinear(L, a, b);
+  const EPS = 1e-4;
+  const inGamut = lin.every(x => x >= -EPS && x <= 1 + EPS);
+  return { rgb: lin.map(x => Math.round(linToSrgb(x) * 255)), inGamut };
+}
+function rgbToOklch(r, g, b) {
+  const R = srgbToLin(r), G = srgbToLin(g), B = srgbToLin(b);
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  const L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  const Bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+  return { L, C: Math.hypot(A, Bb), H: (Math.atan2(Bb, A) / DEG + 360) % 360 };
+}
+const hex = ([r, g, b]) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0')).join('').toUpperCase();
+function hexToRgb(h) { h = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+
+// ---------- gamut ceiling + the manifold spine ----------
+// max in-gamut chroma at (L,H) — binary search to the sRGB edge. Cheap (per-palette, not per-pixel).
+function ceilC(L, H) {
+  let lo = 0, hi = 0.45;
+  for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (oklchToRgb(L, mid, H).inGamut) lo = mid; else hi = mid; }
+  return lo;
+}
+// the spine, baked as 12-pt LUTs (every 30°), verified against color-system-design.md §3.4.
+const H_LUT = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const NATURAL_L = [0.65, 0.63, 0.75, 0.86, 0.94, 0.87, 0.89, 0.84, 0.72, 0.46, 0.55, 0.69]; // ridge lightness
+const PEAK_C    = [0.260, 0.253, 0.176, 0.176, 0.221, 0.240, 0.161, 0.145, 0.163, 0.301, 0.294, 0.315]; // ceiling height
+// per-hue chroma fraction f(H): back off on the violet/magenta spike, ride full on low-ceiling cyan/teal.
+const F_H       = [0.92, 0.92, 0.95, 0.96, 0.95, 0.95, 1.00, 1.00, 0.95, 0.85, 0.84, 0.84];
+function lutLerp(lut, H) {
+  H = ((H % 360) + 360) % 360; const seg = H / 30, i = Math.floor(seg) % 12, f = seg - Math.floor(seg);
+  return lut[i] * (1 - f) + lut[(i + 1) % 12] * f;
+}
+const naturalL = H => lutLerp(NATURAL_L, H);
+const peakC = H => lutLerp(PEAK_C, H);
+const fH = H => lutLerp(F_H, H);
+
+// dL window: how far off the ridge a hue stays "nice" (ceilC stays >= floor·peakC). Asymmetric, hue-specific.
+const CHROMA_FLOOR = 0.82;
+function dLbounds(H, floor = CHROMA_FLOOR) {
+  const nat = naturalL(H), pk = peakC(H), thresh = floor * pk;
+  let up = 0; for (let dl = 0.02; nat + dl <= 0.99; dl += 0.02) { if (ceilC(nat + dl, H) < thresh) break; up = dl; }
+  let dn = 0; for (let dl = 0.02; nat - dl >= 0.02; dl += 0.02) { if (ceilC(nat - dl, H) < thresh) break; dn = dl; }
+  return { lo: -dn, hi: up };
+}
+
+// THE SAMPLER: a nice colour = (H, dL off ridge); L = naturalL+dL, C = f(H)·ceilC(L,H) (so it can't clip).
+function manifoldColour(H, dL = 0, fMul = 1) {
+  H = ((H % 360) + 360) % 360;
+  const L = Math.max(0.02, Math.min(0.99, naturalL(H) + dL));
+  const C = fH(H) * fMul * ceilC(L, H);
+  const { rgb } = oklchToRgb(L, C, H);
+  return { L, C, H, rgb, hex: hex(rgb) };
+}
+
+// ---------- colour-axis sampling for the picker tracks (oklch.com-style) ----------
+// Sample the manifold along ONE axis, holding the others. base = {H, dL, chromaF}. Pure, reused by sliders + pad.
+function cskAxisSamples(axis, base, n = 48) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const u = i / (n - 1); let L, C, H;
+    if (axis === 'hue')        { H = u * 360; L = Math.max(0.02, Math.min(0.99, naturalL(H) + base.dL)); C = base.chromaF * ceilC(L, H); }
+    else if (axis === 'value') { H = base.H; L = Math.max(0.02, Math.min(0.99, naturalL(H) + (-0.45 + u * 0.9))); C = base.chromaF * ceilC(L, H); }   // dL slider range, thumb-aligned
+    else                       { H = base.H; L = Math.max(0.02, Math.min(0.99, naturalL(H) + base.dL)); C = u * ceilC(L, H); }
+    const { rgb, inGamut } = oklchToRgb(L, C, H);
+    out.push({ hex: hex(rgb), inGamut });
+  }
+  return out;
+}
+// 2-D slice grid (L vertical × chroma-fraction horizontal) at a fixed hue — for the pad. Top row = high L.
+function cskSliceGrid(H, cols = 40, rows = 28) {
+  const cell = [];
+  for (let r = 0; r < rows; r++) {
+    const L = 0.99 - (r / (rows - 1)) * 0.97, cap = ceilC(L, H);
+    for (let c = 0; c < cols; c++) { const { rgb, inGamut } = oklchToRgb(L, (c / (cols - 1)) * cap, H); cell.push({ hex: hex(rgb), inGamut }); }
+  }
+  return { cols, rows, cell };
+}
+
+// ---------- relations (color-relations.md) ----------
+// SIBLING: a vertical ridge-move holding the ceiling-ratio, with a tiny co-rotational hue drift.
+function sibling(anchor, dL) {
+  const k = 28; // ~5.6°/0.2L toward the cooler neighbour
+  const H = anchor.H + k * dL;
+  const L = Math.max(0.04, Math.min(0.98, anchor.L + dL));
+  const ratio = anchor.C / Math.max(1e-4, ceilC(anchor.L, anchor.H));
+  let C = ceilC(L, H) * ratio;
+  // muddy-escape on the blue/cyan arc: if it falls below the floor or 0.10 abs, rotate toward a lower ridge
+  if (C / Math.max(1e-4, ceilC(L, H)) < CHROMA_FLOOR || C < 0.10) {
+    const Hr = H + (H > 180 && H < 250 ? -18 : 12);
+    const C2 = ceilC(L, Hr) * ratio;
+    const { rgb } = oklchToRgb(L, C2, Hr); return { L, C: C2, H: ((Hr % 360) + 360) % 360, rgb, hex: hex(rgb), escaped: true };
+  }
+  const { rgb } = oklchToRgb(L, C, H);
+  return { L, C, H: ((H % 360) + 360) % 360, rgb, hex: hex(rgb) };
+}
+// value-moat collision zones (color-relations §5.3): pairs whose ridges sit at near-equal L.
+// H60↔H240 (amber/yellow ↔ blue) and magenta(~330)↔bright-teal(~190).
+function inCollisionZone(h1, h2) {
+  const pair = (x, y, t = 25) => (cyc(h1, x) < t && cyc(h2, y) < t) || (cyc(h1, y) < t && cyc(h2, x) < t);
+  return pair(60, 240) || pair(330, 190);
+}
+const cyc = (a, b) => { const d = Math.abs(((a - b) % 360 + 360) % 360); return Math.min(d, 360 - d); };
+
+// ---------- gradient/accent partner templates (return target hue offsets) ----------
+const PARTNER_TEMPLATES = {
+  mono:            (a) => [a],
+  analogous:       (a, rng) => [a + (rng ? rng.float(12, 35) : 24)],
+  complement:      (a) => [a + 180],
+  splitComplement: (a, rng) => [a + 180 + (rng ? rng.float(-30, 30) : 0)],
+  triadic:         (a) => [a + 120],
+};
+
+// ---------- assembleTransition (color-relations §5) — per-role, pinnable, on-manifold ----------
+// p: resolved colour params (anchorHue/anchorDL/anchorChromaF/siblingSpread/gradientTemplate/
+//    accentTemplate/accentTension/groundHue/groundDark/setCount/vividBudget).
+// prev: previous palette (for pins). pins: {base,sibling,gradient,accent,ground} — pinned roles copied from prev.
+function assembleTransition(rng, p = {}) {
+  const keep = (role, fresh) => fresh();   // roles always freshly assembled (pins/prev removed)
+  const cf = p.anchorChromaF != null ? p.anchorChromaF : 1;   // global chroma fraction → mono (cf 0) = true greyscale
+
+  // GROUND — dark recessive; read stops STRAIGHT off the manifold at a high-ridge cool hue (no
+  // double-sibling → top stop lands at the spec's ~L0.6 dark-teal launchpad, not near-black).
+  const ground = keep('ground', () => {
+    const gH = (p.groundHue != null ? p.groundHue : 196) + rng.float(-6, 6);
+    const gd = p.groundDark != null ? p.groundDark : 0.72;
+    const topDL = -(0.10 + gd * 0.24);
+    const groundStops = [topDL, topDL - 0.08, topDL - 0.21].map(dl => manifoldColour(gH, dl, cf));
+    return { groundStops, groundTopL: groundStops[0].L, groundHue: gH };
+  });
+  // BASE — free near-ridge anchor (H / value / chroma-fraction).
+  const base = keep('base', () => {
+    const aH = p.anchorHue != null ? p.anchorHue : 196;
+    const db = dLbounds(aH);
+    const aDL = p.anchorDL != null ? p.anchorDL : rng.tri(db.lo * 0.4, 0, db.hi * 0.4);   // explicit user value reaches the full L range (manifoldColour clamps L to gamut)
+    return { anchor: manifoldColour(aH, aDL, p.anchorChromaF != null ? p.anchorChromaF : 1), anchorDL: aDL };
+  });
+  const anchor = base.anchor;
+  // SIBLINGS — dark/light, spread by siblingSpread.
+  const sib = keep('sibling', () => {
+    const spread = p.siblingSpread != null ? p.siblingSpread : 0.18;
+    const dbh = dLbounds(anchor.H);
+    return { dark: sibling(anchor, -Math.max(0.06, Math.min(0.30, spread))),
+             light: sibling(anchor, Math.max(0.02, Math.min(Math.max(0.04, dbh.hi), spread * 0.5))) };
+  });
+  // GRADIENT-PARTNER — one hue off base via the chosen template.
+  const grad = keep('gradient', () => {
+    const tpl = PARTNER_TEMPLATES[p.gradientTemplate] || PARTNER_TEMPLATES.analogous;
+    const gHue = ((tpl(anchor.H, rng)[0] % 360) + 360) % 360;
+    return { gradient: manifoldColour(gHue, rng.tri(dLbounds(gHue).lo * 0.3, 0, dLbounds(gHue).hi * 0.3), cf) };
+  });
+  // ACCENT — partner template, value-moat + collision guard.
+  const acc = keep('accent', () => {
+    let accent, accentEdge = false, tries = 0;
+    const tplKey = p.accentTemplate || 'splitComplement';
+    const tension = p.accentTension != null ? p.accentTension : 25;     // accentTension now drives the split arm
+    do {
+      let acH = (tplKey === 'splitComplement') ? anchor.H + 180 + (rng.bool() ? tension : -tension)
+        : (PARTNER_TEMPLATES[tplKey] || PARTNER_TEMPLATES.complement)(anchor.H, rng)[0];
+      acH = ((acH % 360) + 360) % 360;
+      accent = manifoldColour(acH, rng.tri(dLbounds(acH).lo * 0.3, 0, dLbounds(acH).hi * 0.3), cf);
+      accentEdge = inCollisionZone(anchor.H, acH) || (accent.L - ground.groundTopL) < 0.10;
+      tries++;
+    } while (accentEdge && tries < 8);
+    return { accent, accentEdge };
+  });
+
+  const setCount = p.setCount != null ? p.setCount : 2;
+  const useAccent = setCount >= 2;                         // count=1 → mono (accent collapses to base)
+  const focus = manifoldColour(rgbToOklch(202, 255, 2).H, 0);   // chartreuse glow (~OKLCH H125)
+  const white = { L: 1, C: 0, H: 0, rgb: [255, 255, 255], hex: '#FFFFFF' };
+  const black = { L: 0, C: 0, H: 0, rgb: [0, 0, 0], hex: '#000000' };
+  const accent = useAccent ? acc.accent : anchor;
+  return {
+    groundStops: ground.groundStops, groundTopL: ground.groundTopL, groundHue: ground.groundHue,
+    anchor, dark: sib.dark, light: sib.light, gradient: grad.gradient,
+    accent, accentEdge: useAccent && acc.accentEdge, focus, white, black,
+    setCount, vividBudget: p.vividBudget != null ? p.vividBudget : 0.18,
+    hexes: { ground: ground.groundStops.map(s => s.hex), anchor: anchor.hex, dark: sib.dark.hex,
+             light: sib.light.hex, gradient: grad.gradient.hex, accent: accent.hex, focus: focus.hex },
+  };
+}
+
+
+// ===== js/curve.js =====
+// PSG curve system — the Range-of-Curves model + the draggable bezier/control-point editor.
+// Implements docs/curve-system-design.md (= decisions-log §E): ONE Curve type, ONE pure curveEval,
+// the two role-keyed catalogue halves, rules-only sampleCurve, and the canvas editor (§3.3 / §E.3).
+//
+// EVALUATION MODEL (per the user's contract): every curve evaluates through a centripetal
+// Catmull-Rom spline passing through the curve's KNOTS. A "knot" is {x,y,...}. The named families
+// (sine/smootherstep/easeOutBack/…) are deterministic knot GENERATORS — a preset is just a set of
+// knots produced from its shape params, so analytic presets, shape-adjusted presets and hand-dragged
+// freeform curves are three views of ONE data shape with ONE evaluator.
+//   - role:'reveal'   → monotone-ish 0→1, endpoints PINNED: curveEval(c,0)=0, curveEval(c,1)=1.
+//   - role:'oscillator' → periodic & seamless: the seam knot is WELDED (first==last value, and the
+//     wrap-around tangent matches) so curveEval(c,0)===curveEval(c,1) and slopes match at the seam.
+//
+// PURE: this module reads `document` ONLY inside curveEditor(), so it imports cleanly in node.
+//
+// ── ui.js INTEGRATION CONTRACT ───────────────────────────────────────────────────────────────────
+// ui.js will replace its static curve row (the `staticRow` branch for p.type==='curve') with:
+//
+//   el('div', { class: 'slot' }, [
+//     curveEditor(
+//       () => app.state.params[key],                 // getCurve(): current Curve (or curveId string)
+//       v  => app.setParam(key, v),                  // setCurve(curve): called on every edit
+//       { role: key === 'loopOsc' ? 'oscillator' : 'reveal', band: theParamRow }   // opts
+//     )
+//   ])
+//
+// getCurve() may return a Curve object OR a bare curveId string (curveEditor coerces a string via the
+// catalogue). opts.role is the binding-site role; opts.band is the ParamRow (its curveFamily /
+// curveJitter.envelope / curveJitter.pointCount drive the chips + the translucent jitter band, §U1).
+// ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+// ===== small pure helpers (cv-prefixed — share one scope with the other modules after the build strips imports) =====
+const cvClamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const cvLerp = (a, b, t) => a + (b - a) * t;
+const cvTAU = Math.PI * 2;
+const cvSamples = 192;              // polyline resolution for the plot + band hull
+const cvEps = 1e-4;
+
+// ============================================================================================
+//  1. KNOT GENERATORS — each named family is a deterministic function (shapeParams) → knots[].
+//     A knot = {x, y}. x is monotone 0..1. curveEval splines through these via centripetal CR.
+//     Reveals generate knots with y(0)=0, y(1)=1. Oscillators generate a CLOSED knot ring whose
+//     first and last knot are the welded seam (same y, periodic tangent) → seamless by construction.
+// ============================================================================================
+
+// resolve a shape param (may be a number, or a 3-knob Param {cur} / {full,band}) to a scalar
+function cvShape(c, name, dflt) {
+  const sp = c && c.shapeParams;
+  if (!sp) return dflt;
+  const v = sp[name];
+  if (v == null) return dflt;
+  if (typeof v === 'number') return v;
+  if (typeof v.cur === 'number') return v.cur;
+  return dflt;
+}
+
+// sample an analytic formula at N+1 stations → knots[]. fn(u)→y. Used by analytic families so the
+// editor/eval go through ONE spline path. n = interior resolution (more = closer to the closed form).
+function cvKnotsFromFn(fn, n) {
+  const k = [];
+  for (let i = 0; i <= n; i++) { const x = i / n; k.push({ x, y: fn(x) }); }
+  return k;
+}
+
+// REVEAL ease closed forms (E.4 §5.1). Each returns y for u∈[0,1], pinned 0→1.
+const cvRevealFn = {
+  linear: () => (u) => u,
+  smoothstep: () => (u) => u * u * (3 - 2 * u),
+  smootherstep: () => (u) => u * u * u * (u * (u * 6 - 15) + 10),
+  easeInOutSine: () => (u) => 0.5 - 0.5 * Math.cos(Math.PI * u),
+  easeInCubic: () => (u) => u * u * u,
+  easeOutCubic: () => (u) => 1 - (1 - u) ** 3,
+  easeInOutCubic: () => (u) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2),
+  expo: () => (u) => (u <= 0 ? 0 : u >= 1 ? 1 : 2 ** (10 * u - 10)),
+  spring: (c) => { const a = cvShape(c, 'a', 6), b = cvShape(c, 'b', 9); return (u) => 1 - Math.exp(-a * u) * Math.cos(b * u); },
+  easeOutBack: (c) => { const s = cvShape(c, 's', 1.70158), c3 = s + 1; return (u) => 1 + c3 * (u - 1) ** 3 + s * (u - 1) ** 2; },
+  easeOutElastic: (c) => {
+    const amp = cvShape(c, 'amp', 1), period = cvShape(c, 'period', 0.3), k = cvTAU / period;
+    return (u) => (u <= 0 ? 0 : u >= 1 ? 1 : amp * 2 ** (-10 * u) * Math.sin((10 * u - 0.75) * k) + 1);
+  },
+  easeOutBounce: () => (u) => {
+    const n1 = 7.5625, d1 = 2.75;
+    if (u < 1 / d1) return n1 * u * u;
+    if (u < 2 / d1) { u -= 1.5 / d1; return n1 * u * u + 0.75; }
+    if (u < 2.5 / d1) { u -= 2.25 / d1; return n1 * u * u + 0.9375; }
+    u -= 2.625 / d1; return n1 * u * u + 0.984375;
+  },
+};
+
+// OSCILLATOR closed forms (E.4 §5.2). y for u∈[0,1), centred −1..+1, periodic for integer cyc.
+const cvOscFn = {
+  sine: (c) => { const cyc = Math.round(cvShape(c, 'cyc', 1)); return (u) => Math.sin(cvTAU * cyc * u); },
+  cosine: (c) => { const cyc = Math.round(cvShape(c, 'cyc', 1)); return (u) => Math.cos(cvTAU * cyc * u); },
+  triangle: (c) => { const cyc = Math.round(cvShape(c, 'cyc', 1)); return (u) => (2 / Math.PI) * Math.asin(Math.sin(cvTAU * cyc * u)); },
+  pulse: (c) => {
+    const cyc = Math.round(cvShape(c, 'cyc', 1)), duty = cvClamp(cvShape(c, 'duty', 0.5), 0.1, 0.9);
+    // a SMOOTH one-sided bump (not a square wave): raise the sine floor then re-centre to −1..1.
+    // `duty` sharpens the bump (higher exponent = narrower, lower = broader). Periodic for integer cyc.
+    const pw = cvLerp(0.6, 4, duty);
+    return (u) => { const s = 0.5 + 0.5 * Math.cos(cvTAU * cyc * u); return Math.pow(s, pw) * 2 - 1; };
+  },
+  breathe: (c) => {
+    const cyc = Math.round(cvShape(c, 'cyc', 1)), skew = cvClamp(cvShape(c, 'skew', -0.3), -0.9, 0.9);
+    // asymmetric grow-shrink: warp the phase so slow-in / fast-out (or vice-versa). Periodic in u.
+    return (u) => { const p = (cyc * u) % 1, w = p + skew * Math.sin(cvTAU * p) / cvTAU; return Math.sin(cvTAU * w); };
+  },
+  wobble: (c) => { const cyc = Math.round(cvShape(c, 'cyc', 1)); return (u) => { const k = cvTAU * cyc * u; return 0.7 * Math.sin(k) + 0.3 * Math.sin(2 * k); }; },
+  bounceLoop: (c) => { const cyc = Math.round(cvShape(c, 'cyc', 1)); return (u) => Math.abs(Math.sin(Math.PI * cyc * u)) * 2 - 1; },
+  driftSpin: () => (u) => u,                       // monotone ramp consumed mod content symmetry (E.5b)
+  noiseLoop: (c) => {
+    const cyc = Math.max(1, Math.round(cvShape(c, 'cyc', 2))), seed = cvShape(c, 'seed', 1);
+    // value-noise sampled on a CIRCLE so it is seamless: integer # of lattice points around the loop.
+    const N = cyc * 4, amp = [];
+    for (let i = 0; i < N; i++) { const t = Math.sin((i + 1) * 12.9898 + seed * 78.233) * 43758.5453; amp.push((t - Math.floor(t)) * 2 - 1); }
+    return (u) => { const f = ((u % 1) + 1) % 1 * N, i = Math.floor(f), fr = f - i, a = amp[i % N], b = amp[(i + 1) % N], s = fr * fr * (3 - 2 * fr); return cvLerp(a, b, s); };
+  },
+};
+
+// ============================================================================================
+//  2. CATALOGUE — named curves, each: { id, role, kind, hasPoly, shape, make() → knots }.
+//     `shape` carries the default shape-param values + their {min,max} bands (for jitter, §2).
+//     `make()` produces the knot ring (the generator), wrapping analytic fns into knots.
+// ============================================================================================
+
+const cvANALYTIC_KNOTS = 16;        // stations an analytic family bakes to (enough for a clean spline)
+
+function cvRevealEntry(id, shape) {
+  return {
+    id, role: 'reveal', kind: id, hasPoly: false, shape: shape || {},
+    make(c) { const fn = cvRevealFn[id](c || { shapeParams: cvDefaults(shape) }); return cvKnotsFromFn(fn, cvANALYTIC_KNOTS); },
+  };
+}
+function cvOscEntry(id, shape) {
+  return {
+    id, role: 'oscillator', kind: id, hasPoly: false, shape: shape || {},
+    make(c) {
+      const fn = cvOscFn[id](c || { shapeParams: cvDefaults(shape) });
+      const k = cvKnotsFromFn(fn, cvANALYTIC_KNOTS);
+      // WELD the seam: force the last knot's y to equal the first (the analytic forms already do for
+      // integer cyc, but a snap protects breathe/noiseLoop/driftSpin numerically).
+      k[k.length - 1] = { x: 1, y: k[0].y };
+      return k;
+    },
+  };
+}
+function cvDefaults(shape) { const o = {}; for (const k in (shape || {})) o[k] = shape[k].def; return o; }
+
+const cvCATALOGUE = {
+  // ---- REVEAL EASES ----
+  linear: cvRevealEntry('linear'),
+  smoothstep: cvRevealEntry('smoothstep'),
+  smootherstep: cvRevealEntry('smootherstep'),
+  easeInOutSine: cvRevealEntry('easeInOutSine'),
+  easeInCubic: cvRevealEntry('easeInCubic'),
+  easeOutCubic: cvRevealEntry('easeOutCubic'),
+  easeInOutCubic: cvRevealEntry('easeInOutCubic'),
+  expo: cvRevealEntry('expo'),
+  spring: cvRevealEntry('spring', { a: { def: 6, min: 4, max: 9 }, b: { def: 9, min: 6, max: 14 } }),
+  easeOutBack: cvRevealEntry('easeOutBack', { s: { def: 1.70158, min: 0.5, max: 3 } }),
+  easeOutElastic: cvRevealEntry('easeOutElastic', { amp: { def: 1, min: 0.5, max: 1.5 }, period: { def: 0.3, min: 0.2, max: 0.5 } }),
+  easeOutBounce: cvRevealEntry('easeOutBounce'),
+  stepped: {
+    id: 'stepped', role: 'reveal', kind: 'stepped', hasPoly: true, isStepped: true,
+    shape: { n: { def: 4, min: 2, max: 8 } },
+    make(c) {
+      const n = Math.max(2, Math.round(cvShape(c, 'n', 4))), k = [];
+      for (let i = 0; i <= n; i++) { const x = i / n; k.push({ x, y: Math.min(1, Math.floor(x * n) / (n - 1)) }); }
+      return k;
+    },
+  },
+  bezier: {
+    id: 'bezier', role: 'reveal', kind: 'bezier', hasPoly: true,
+    shape: {},
+    // freeform reveal seed = the classic CSS cubic-bezier(.25,.1,.25,1) "ease" as 4 knots.
+    make() { const fn = (u) => u * u * (3 - 2 * u); return [{ x: 0, y: 0 }, { x: 0.34, y: cvClamp(fn(0.34), 0, 1) }, { x: 0.66, y: cvClamp(fn(0.66), 0, 1) }, { x: 1, y: 1 }]; },
+  },
+  // ---- LOOP OSCILLATORS ----
+  sine: cvOscEntry('sine', { cyc: { def: 1, min: 1, max: 6, int: true } }),
+  cosine: cvOscEntry('cosine', { cyc: { def: 1, min: 1, max: 6, int: true } }),
+  triangle: cvOscEntry('triangle', { cyc: { def: 1, min: 1, max: 6, int: true } }),
+  pulse: cvOscEntry('pulse', { cyc: { def: 1, min: 1, max: 6, int: true }, duty: { def: 0.5, min: 0.1, max: 0.9 } }),
+  breathe: cvOscEntry('breathe', { cyc: { def: 1, min: 1, max: 4, int: true }, skew: { def: -0.3, min: -1, max: 1 } }),
+  wobble: cvOscEntry('wobble', { cyc: { def: 1, min: 1, max: 6, int: true } }),
+  bounceLoop: cvOscEntry('bounceLoop', { cyc: { def: 1, min: 1, max: 6, int: true } }),
+  driftSpin: cvOscEntry('driftSpin'),
+  noiseLoop: cvOscEntry('noiseLoop', { cyc: { def: 2, min: 1, max: 6, int: true }, seed: { def: 1, min: 0, max: 99 } }),
+  'custom-periodic': {
+    id: 'custom-periodic', role: 'oscillator', kind: 'custom-periodic', hasPoly: true,
+    shape: {},
+    // freeform oscillator seed = one welded sine through 5 knots (first==last value).
+    make() {
+      const N = 5, k = [];
+      for (let i = 0; i <= N; i++) { const x = i / N; k.push({ x, y: i === N ? 0 : Math.sin(cvTAU * x) }); }
+      return k;
+    },
+  },
+};
+
+// the family lists per role (used by sampleCurve eligibility + the editor chip row).
+const cvREVEAL_IDS = ['linear', 'smoothstep', 'smootherstep', 'easeInOutSine', 'easeInCubic', 'easeOutCubic', 'easeInOutCubic', 'expo', 'spring', 'easeOutBack', 'easeOutElastic', 'easeOutBounce', 'stepped', 'bezier'];
+const cvOSC_IDS = ['sine', 'cosine', 'triangle', 'pulse', 'breathe', 'wobble', 'bounceLoop', 'driftSpin', 'noiseLoop', 'custom-periodic'];
+
+// ============================================================================================
+//  3. curveEval(curve, u) → y — ONE pure function. Splines through the curve's knots with a
+//     centripetal Catmull-Rom. Reveals are open (endpoints pinned); oscillators are CLOSED (wrap).
+// ============================================================================================
+
+// coerce a curveId string / partial into a concrete Curve {kind, role, shapeParams, knots, ...}.
+function cvResolve(curve, role) {
+  if (curve && curve.knots) return curve;                         // already concrete
+  if (typeof curve === 'string') return cvMakeCurve(curve, role); // a bare curveId
+  if (curve && curve.kind && cvCATALOGUE[curve.kind]) {           // {kind, shapeParams} without knots
+    const e = cvCATALOGUE[curve.kind];
+    return { kind: curve.kind, role: e.role, shapeParams: curve.shapeParams || cvDefaults(e.shape), points: curve.points, knots: curve.points || e.make(curve), symmetry: curve.symmetry };
+  }
+  return cvMakeCurve(role === 'oscillator' ? 'sine' : 'easeInOutSine', role);
+}
+
+// build a fresh concrete Curve from a catalogue id (default shape).
+function cvMakeCurve(id, role) {
+  const e = cvCATALOGUE[id] || cvCATALOGUE[role === 'oscillator' ? 'sine' : 'easeInOutSine'];
+  const shapeParams = cvDefaults(e.shape);
+  const c = { kind: e.id, role: e.role, shapeParams, symmetry: e.role === 'oscillator' ? 'wrap-locked' : 'free' };
+  c.knots = e.make(c);
+  if (e.hasPoly) c.points = c.knots;       // editable poly == the knots themselves
+  return c;
+}
+
+// centripetal Catmull-Rom segment eval. p1→p2 is the active span; p0,p3 are neighbours. t∈[0,1].
+function cvCR(p0, p1, p2, p3, t) {
+  const a = 0.5;            // centripetal-ish blend; symmetric uniform CR is fine for our knot density
+  const t2 = t * t, t3 = t2 * t;
+  const y = a * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+  return y;
+}
+
+function cvEvalKnots(knots, u, closed) {
+  const n = knots.length;
+  if (n === 0) return 0;
+  if (n === 1) return knots[0].y;
+  u = closed ? ((u % 1) + 1) % 1 : cvClamp(u, 0, 1);
+  // locate the span [i, i+1] by x (knots monotone in x).
+  let i = 0;
+  while (i < n - 1 && u > knots[i + 1].x) i++;
+  const k1 = knots[i], k2 = knots[Math.min(i + 1, n - 1)];
+  const span = (k2.x - k1.x) || 1;
+  const t = cvClamp((u - k1.x) / span, 0, 1);
+  // neighbours, wrapping for closed (skip the duplicated seam knot so the ring is C¹ at the weld).
+  let p0y, p3y;
+  if (closed) {
+    const m = n - 1;                       // last knot is the seam duplicate of knot 0
+    const im = ((i - 1) % m + m) % m, ip = (i + 1) % m, ip2 = (i + 2) % m;
+    p0y = knots[im].y; p3y = knots[ip2].y;
+    return cvCR(p0y, knots[i % m].y, knots[ip].y, p3y, t);
+  }
+  p0y = (i > 0 ? knots[i - 1] : k1).y;
+  p3y = (i + 2 < n ? knots[i + 2] : k2).y;
+  return cvCR(p0y, k1.y, k2.y, p3y, t);
+}
+
+function curveEval(curve, u) {
+  const c = cvResolve(curve);
+  const closed = c.role === 'oscillator';
+  let y = cvEvalKnots(c.knots, u, closed);
+  if (c.invert) y = closed ? -y : 1 - y;
+  if (!closed) {
+    // pin the reveal endpoints exactly (spline rounding can drift a hair) and clamp to a sane ceiling.
+    if (u <= cvEps) return 0;
+    if (u >= 1 - cvEps) return 1;
+  }
+  return y;
+}
+
+// ============================================================================================
+//  4. sampleCurve(band, rng) → a concrete Curve. RULES-ONLY (U7): pick an eligible family, roll
+//     pointCount if the curve has a control polygon, jitter shape params within the envelope.
+//     Freeform (bezier / custom-periodic) is NEVER produced here — it is excluded from `family`.
+// ============================================================================================
+
+function sampleCurve(band, rng) {
+  band = band || {};
+  const role = band.role || (band.curveRole) || 'reveal';
+  // (1) eligible family — from band.curveFamily (the ParamRow field), else role default set minus freeform.
+  let family = (band.curveFamily && band.curveFamily.length) ? band.curveFamily.slice() : null;
+  if (!family) family = (role === 'oscillator' ? cvOSC_IDS : cvREVEAL_IDS).filter((id) => id !== 'bezier' && id !== 'custom-periodic');
+  family = family.filter((id) => cvCATALOGUE[id] && id !== 'bezier' && id !== 'custom-periodic');
+  if (!family.length) family = [role === 'oscillator' ? 'sine' : 'easeInOutSine'];
+
+  const weights = band.weights;
+  let id;
+  if (weights && weights.length === family.length && rng.weighted) id = rng.weighted(family.map((v, i) => ({ v, w: weights[i] })));
+  else id = rng.pick ? rng.pick(family) : family[Math.floor((rng.next ? rng.next() : Math.random()) * family.length)];
+
+  const e = cvCATALOGUE[id];
+  const c = { kind: e.id, role: e.role, shapeParams: cvDefaults(e.shape), symmetry: e.role === 'oscillator' ? 'wrap-locked' : 'free' };
+
+  // (2) jitter — one dial scaling all shape params by a fraction of each param's own band half-width.
+  const jitter = band.curveJitter && band.curveJitter.envelope != null ? band.curveJitter.envelope : (band.jitter != null ? band.jitter : 0.35);
+  for (const name in e.shape) {
+    const sp = e.shape[name], lo = sp.min, hi = sp.max, centre = (lo + hi) / 2, halfW = (hi - lo) / 2;
+    if (name === 'cyc') continue;                                 // cyc is integer-snapped, never jittered (§2.3)
+    const signed = (rng.float ? rng.float(-1, 1) : (rng.next ? rng.next() : Math.random()) * 2 - 1);
+    let v = centre + jitter * halfW * signed;
+    if (sp.int) v = Math.round(v);
+    c.shapeParams[name] = cvClamp(v, lo, hi);
+  }
+  // cyc: roll an integer within its band (no jitter), default 1 (§E.6).
+  if (e.shape.cyc) {
+    const lo = e.shape.cyc.min, hi = e.shape.cyc.max;
+    c.shapeParams.cyc = rng.int ? rng.int(lo, hi) : Math.round(cvLerp(lo, hi, rng.next ? rng.next() : Math.random()));
+  }
+
+  // (3) point-count — only for control-polygon families that survive the freeform filter (stepped).
+  if (e.hasPoly && e.isStepped) {
+    const pc = (band.curveJitter && band.curveJitter.pointCount) || band.pointCount;
+    if (pc) { const n = rng.int ? rng.int(pc.min, pc.max) : Math.round(cvLerp(pc.min, pc.max, rng.next ? rng.next() : Math.random())); c.shapeParams.n = cvClamp(n, pc.min, pc.max); }
+  }
+
+  c.knots = e.make(c);
+  if (e.role === 'oscillator') c.knots[c.knots.length - 1] = { x: 1, y: c.knots[0].y };  // seam-snap (§4.2)
+  if (e.hasPoly) c.points = c.knots;
+  return c;
+}
+
+// ============================================================================================
+//  5. curveEditor(getCurve, setCurve, opts) → DOM element (BROWSER-ONLY — touches `document`).
+//     Canvas plot of curveEval, draggable knots, add/remove, family chips, animated dot, and the
+//     translucent jitter-envelope band behind the plot (§U1). Oscillators weld the seam structurally.
+// ============================================================================================
+
+function cvEl(tag, attrs, kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k === 'text') e.textContent = attrs[k];
+    else if (k === 'style') e.setAttribute('style', attrs[k]);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  }
+  for (const c of [].concat(kids || [])) if (c != null) e.append(c);
+  return e;
+}
+function cvCss(name, fb) {
+  try { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; } catch (e) { return fb; }
+}
+
+function curveEditor(getCurve, setCurve, opts) {
+  opts = opts || {};
+  const role = opts.role || 'reveal';
+  const band = opts.band || {};
+  const isOsc = role === 'oscillator';
+  const W = 240, H = 150, PAD = 12;
+  const yLo = isOsc ? -1 : 0, yHi = 1;
+
+  // working concrete curve (clone so edits don't mutate state until setCurve).
+  let curve = cvNormalize(getCurve(), role);
+  let dragging = -1, hover = -1, raf = 0, phase = 0;
+
+  const wrap = cvEl('div', { class: 'cv-wrap', style: 'display:flex;flex-direction:column;gap:6px;width:100%' });
+
+  // --- family chip row: click=set · dbl-click/long-press=toggle randomize-eligibility (dotted) — uniform with the rest of the UI ---
+  const allIds = isOsc ? cvOSC_IDS : cvREVEAL_IDS;
+  const eligNow = () => (band.curveFamily && band.curveFamily.length) ? band.curveFamily : allIds;
+  const toggleFam = (id) => { const f = (band.curveFamily && band.curveFamily.length) ? band.curveFamily.slice() : allIds.slice(); const i = f.indexOf(id); i >= 0 ? f.splice(i, 1) : f.push(id); band.curveFamily = f; renderChips(); };
+  const chips = cvEl('div', { class: 'cv-chips', style: 'display:flex;flex-wrap:wrap;gap:4px' });
+  for (const id of allIds) {
+    let lp = 0, lged = 0, clk = 0;
+    const b = cvEl('button', {
+      class: 'cv-chip', text: id, style: chipStyle(id, eligNow().includes(id) || id === curve.kind),
+      onclick: () => { if (lged) { lged = 0; return; } clearTimeout(clk); clk = setTimeout(() => { curve = cvMakeCurve(id, role); commit(); renderChips(); }, 230); },
+      ondblclick: () => { clearTimeout(clk); toggleFam(id); },
+      onpointerdown: () => { lged = 0; lp = setTimeout(() => { lged = 1; clearTimeout(clk); toggleFam(id); }, 450); },
+      onpointerup: () => clearTimeout(lp), onpointerleave: () => clearTimeout(lp),
+    });
+    b._id = id; chips.append(b);
+  }
+  function chipStyle(id, eligible) {
+    const on = curve.kind === id;
+    const accent2 = cvCss('--accent2', '#15d2ef');
+    const bg = on ? accent2 : 'var(--panel2,#191922)';
+    const col = on ? '#04222a' : (eligible ? cvCss('--ink2', '#a6a6b6') : cvCss('--ink3', '#6f6f82'));
+    const outline = (eligible && !on) ? `outline:1px dashed ${accent2};outline-offset:1px;` : '';
+    return `${outline}font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid var(--line,#2a2a37);background:${bg};color:${col};opacity:${eligible || on ? 1 : 0.5};cursor:pointer`;
+  }
+  function renderChips() { const f = eligNow(); for (const b of chips.children) b.setAttribute('style', chipStyle(b._id, f.includes(b._id) || b._id === curve.kind)); }
+
+  // --- canvas ---
+  const cvs = cvEl('canvas', { class: 'cv-canvas', style: `width:100%;height:${H}px;border:1px solid var(--line,#2a2a37);border-radius:7px;background:var(--bg,#0b0b10);touch-action:none;display:block` });
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  cvs.width = W * dpr; cvs.height = H * dpr;
+  const ctx = cvs.getContext('2d'); ctx.scale(dpr, dpr);
+
+  // coordinate maps (data ↔ pixels)
+  const px = (x) => PAD + x * (W - 2 * PAD);
+  const py = (y) => H - PAD - ((y - yLo) / (yHi - yLo)) * (H - 2 * PAD);
+  const ux = (cx) => cvClamp((cx - PAD) / (W - 2 * PAD), 0, 1);
+  const uy = (cy) => yLo + (1 - cvClamp((cy - PAD) / (H - 2 * PAD), 0, 1)) * (yHi - yLo);
+
+  // --- jitter-envelope band hull (§U1 / §3.4.2): shade between per-u min/max over representative curves ---
+  function envelopeHull() {
+    const jitter = band.curveJitter && band.curveJitter.envelope != null ? band.curveJitter.envelope : (band.jitter != null ? band.jitter : 0.35);
+    const e = cvCATALOGUE[curve.kind];
+    if (!e || jitter <= 0 || !Object.keys(e.shape).length) return null;
+    // build ~8 representative curves at the corners of each shape param's jitter reach.
+    const variants = [];
+    const names = Object.keys(e.shape).filter((n) => n !== 'cyc');
+    const combos = Math.min(8, 1 << Math.max(1, names.length));
+    for (let m = 0; m < combos; m++) {
+      const sp = Object.assign({}, curve.shapeParams);
+      names.forEach((n, bi) => { const s = e.shape[n], halfW = (s.max - s.min) / 2, c = (s.max + s.min) / 2, dir = (m >> bi) & 1 ? 1 : -1; sp[n] = cvClamp(c + dir * jitter * halfW, s.min, s.max); });
+      variants.push({ kind: curve.kind, role, shapeParams: sp, knots: e.make({ shapeParams: sp }) });
+    }
+    const min = [], max = [];
+    for (let i = 0; i <= cvSamples; i++) {
+      const u = i / cvSamples; let lo = Infinity, hi = -Infinity;
+      for (const v of variants) { const y = curveEval(v, u); if (y < lo) lo = y; if (y > hi) hi = y; }
+      min.push(lo); max.push(hi);
+    }
+    return { min, max };
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    // grid + axes
+    ctx.strokeStyle = cvCss('--line', '#2a2a37'); ctx.lineWidth = 1;
+    ctx.strokeRect(PAD, PAD, W - 2 * PAD, H - 2 * PAD);
+    if (isOsc) { ctx.beginPath(); ctx.moveTo(PAD, py(0)); ctx.lineTo(W - PAD, py(0)); ctx.setLineDash([3, 3]); ctx.strokeStyle = cvCss('--line2', '#363648'); ctx.stroke(); ctx.setLineDash([]); }
+
+    // jitter band hull (behind the curve)
+    const hull = envelopeHull();
+    if (hull) {
+      ctx.beginPath(); ctx.moveTo(px(0), py(hull.max[0]));
+      for (let i = 1; i <= cvSamples; i++) ctx.lineTo(px(i / cvSamples), py(hull.max[i]));
+      for (let i = cvSamples; i >= 0; i--) ctx.lineTo(px(i / cvSamples), py(hull.min[i]));
+      ctx.closePath(); ctx.fillStyle = cvCss('--accent2', '#15d2ef') + '22'; ctx.fill();
+    }
+
+    // the curve polyline
+    ctx.beginPath();
+    for (let i = 0; i <= cvSamples; i++) { const u = i / cvSamples, y = curveEval(curve, u); (i ? ctx.lineTo : ctx.moveTo).call(ctx, px(u), py(y)); }
+    ctx.strokeStyle = cvCss('--accent', '#c5ff15'); ctx.lineWidth = 2; ctx.stroke();
+
+    // oscillator seam: faint wrap line at u=1 + ghost of the start
+    if (isOsc) {
+      ctx.beginPath(); ctx.moveTo(px(1), PAD); ctx.lineTo(px(1), H - PAD); ctx.strokeStyle = cvCss('--hot', '#fe0089') + '55'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // knots (draggable). reveal endpoints drawn pinned; oscillator seam pair drawn welded.
+    const knots = editableKnots();
+    for (let i = 0; i < knots.length; i++) {
+      const k = knots[i], pinned = isPinned(i, knots.length);
+      ctx.beginPath(); ctx.arc(px(k.x), py(k.y), i === hover || i === dragging ? 6 : 4.5, 0, cvTAU);
+      ctx.fillStyle = pinned ? cvCss('--ink3', '#6f6f82') : cvCss('--accent', '#c5ff15');
+      ctx.fill(); ctx.strokeStyle = cvCss('--bg', '#0b0b10'); ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // animated visualiser dot riding the curve at the preview phase
+    const u = isOsc ? phase : phase, y = curveEval(curve, u);
+    ctx.beginPath(); ctx.arc(px(u), py(y), 4, 0, cvTAU); ctx.fillStyle = cvCss('--accent2', '#15d2ef'); ctx.fill();
+  }
+
+  // the user-facing knots are the curve's knots; for closed oscillators the last is the seam-weld of the first.
+  function editableKnots() { return curve.knots; }
+  function isPinned(i, n) {
+    if (isOsc) return i === n - 1;                 // the welded seam-copy follows knot 0, not draggable alone
+    return i === 0 || i === n - 1;                 // reveal endpoints pinned to (0,0)/(1,1)
+  }
+
+  // promote the working curve to freeform on a hand edit (it leaves the named family / Randomize set, §E.3).
+  function toFreeform() {
+    if (curve.kind === 'bezier' || curve.kind === 'custom-periodic') return;
+    curve = { kind: isOsc ? 'custom-periodic' : 'bezier', role, shapeParams: {}, symmetry: isOsc ? 'wrap-locked' : 'free', knots: curve.knots.map((k) => ({ x: k.x, y: k.y })) };
+    curve.points = curve.knots; renderChips();
+  }
+
+  function commit() { curve.points = curve.knots; setCurve(curve); draw(); }
+
+  // --- pointer interaction ---
+  function hit(cx, cy) {
+    const knots = editableKnots(); let best = -1, bd = 12 * 12;
+    for (let i = 0; i < knots.length; i++) { const dx = cx - px(knots[i].x), dy = cy - py(knots[i].y), d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } }
+    return best;
+  }
+  cvs.addEventListener('pointerdown', (ev) => {
+    const r = cvs.getBoundingClientRect(), cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+    const i = hit(cx, cy);
+    if (i < 0) { addPoint(cx, cy); return; }                // click on empty curve → add a point
+    dragging = i; cvs.setPointerCapture(ev.pointerId); draw();
+  });
+  cvs.addEventListener('pointermove', (ev) => {
+    const r = cvs.getBoundingClientRect(), cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+    if (dragging < 0) { const h = hit(cx, cy); if (h !== hover) { hover = h; draw(); } return; }
+    moveKnot(dragging, ux(cx), uy(cy), ev.shiftKey);
+  });
+  const endDrag = () => { if (dragging >= 0) { dragging = -1; commit(); } };
+  cvs.addEventListener('pointerup', endDrag);
+  cvs.addEventListener('pointercancel', endDrag);
+  cvs.addEventListener('dblclick', (ev) => {        // double-click a knot → remove it
+    const r = cvs.getBoundingClientRect(), cx = ev.clientX - r.left, cy = ev.clientY - r.top, i = hit(cx, cy);
+    if (i >= 0) removePoint(i);
+  });
+  cvs.addEventListener('contextmenu', (ev) => {     // right-click a knot → remove it
+    ev.preventDefault(); const r = cvs.getBoundingClientRect(), i = hit(ev.clientX - r.left, ev.clientY - r.top); if (i >= 0) removePoint(i);
+  });
+
+  function moveKnot(i, nx, ny, axisLock) {
+    toFreeform();
+    const knots = curve.knots, n = knots.length, k = knots[i];
+    if (isPinned(i, n)) {
+      if (isOsc && i === n - 1) return;             // seam copy is moved via knot 0 only
+      // reveal endpoints: x fixed, y fixed to 0/1 → only handles (here: not draggable). bail.
+      return;
+    }
+    if (axisLock) { if (Math.abs(nx - k.x) > Math.abs(ny - k.y)) ny = k.y; else nx = k.x; }
+    // monotone x: keep between neighbours so progress never reverses.
+    const loX = (i > 0 ? knots[i - 1].x : 0) + 0.01, hiX = (i < n - 1 ? knots[i + 1].x : 1) - 0.01;
+    k.x = cvClamp(nx, loX, hiX);
+    k.y = cvClamp(ny, yLo - 0.2, yHi + 0.2);        // allow a little overshoot for back/elastic, sane ceiling
+    if (!isOsc) k.y = cvClamp(k.y, yLo, yHi);        // reveals stay in unit square (interior)
+    // oscillator: weld the seam — knot 0 drives the seam copy at index n-1.
+    if (isOsc && i === 0) { knots[n - 1].y = k.y; }
+    draw();
+  }
+
+  function addPoint(cx, cy) {
+    toFreeform();
+    const u = ux(cx), knots = curve.knots;
+    let i = 0; while (i < knots.length - 1 && u > knots[i + 1].x) i++;
+    const max = (band.curveJitter && band.curveJitter.pointCount && band.curveJitter.pointCount.max) || 8;
+    if (knots.length >= max + (isOsc ? 1 : 0)) return;
+    const ins = { x: cvClamp(u, knots[i].x + 0.02, knots[i + 1].x - 0.02), y: curveEval(curve, u) };
+    knots.splice(i + 1, 0, ins); commit();
+  }
+  function removePoint(i) {
+    toFreeform();
+    const knots = curve.knots, n = knots.length;
+    const min = (band.curveJitter && band.curveJitter.pointCount && band.curveJitter.pointCount.min) || 3;
+    if (isPinned(i, n)) return;
+    if (n <= min + (isOsc ? 1 : 0)) return;
+    knots.splice(i, 1); commit();
+  }
+
+  function cvNormalize(raw, r) {
+    const c = cvResolve(raw, r);
+    // ensure a knot ring exists and an oscillator's seam is welded.
+    if (!c.knots) { const e = cvCATALOGUE[c.kind] || cvCATALOGUE[r === 'oscillator' ? 'sine' : 'easeInOutSine']; c.knots = e.make(c); }
+    if (r === 'oscillator' && c.knots.length) c.knots[c.knots.length - 1] = { x: 1, y: c.knots[0].y };
+    return c;
+  }
+
+  // --- reset + manual chip row ---
+  const tools = cvEl('div', { style: 'display:flex;gap:6px;align-items:center' }, [
+    cvEl('button', { class: 'cv-reset', text: '↺ reset', style: 'font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid var(--line,#2a2a37);background:var(--panel2,#191922);color:var(--ink2,#a6a6b6);cursor:pointer', onclick: () => { curve = cvMakeCurve(curve.kind && cvCATALOGUE[curve.kind] && !cvCATALOGUE[curve.kind].hasPoly ? curve.kind : (isOsc ? 'sine' : 'easeInOutSine'), role); commit(); renderChips(); } }),
+    cvEl('span', { class: 'cv-hint', text: isOsc ? 'drag knots · seam welded' : 'drag knots · ends pinned', style: 'font-size:10px;color:var(--ink3,#6f6f82)' }),
+  ]);
+
+  // --- animation loop for the visualiser dot ---
+  function tick() { phase = (phase + 0.006) % 1; draw(); raf = requestAnimationFrame(tick); }
+  if (typeof requestAnimationFrame !== 'undefined') raf = requestAnimationFrame(tick); else draw();
+  // expose a cleanup hook (caller may call wrap._cvDispose() when removing the row)
+  wrap._cvDispose = () => { if (raf) cancelAnimationFrame(raf); };
+
+  wrap.append(chips, cvs, tools);
+  draw();
+  return wrap;
+}
+
+
+// ===== js/params.js =====
+// ParamRow model (psg-ui-design §7.1) — the universal 3-knob param {full, band, cur}.
+// Randomize samples within the BAND (rules-only, U7). One renderer per type drives the UI (Phase 5).
+// Pure, node-testable.
+
+function P(row) {
+  const r = Object.assign({ step: 0.01, dist: 'tri', group: 'element', wrap: false }, row);
+  if (r.full && r.band == null) r.band = { randMin: r.full.min, randMax: r.full.max };
+  if (r.cur == null && r.full) r.cur = (r.full.min + r.full.max) / 2;
+  if (r.type === 'bool') { r.boolPolicy = r.boolPolicy || 'either'; r.randTrue = r.randTrue == null ? 0.5 : r.randTrue; }
+  return r;
+}
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function snap(v, p) {
+  if (p.step) v = Math.round(v / p.step) * p.step;
+  if (p.full) v = clamp(v, p.full.min, p.full.max);
+  return +v.toFixed(6);
+}
+// circular sample for angle/hue bands that wrap through 0/360 (randMin > randMax means "wrap")
+function sampleAngleBand(lo, hi, rng) {
+  if (hi >= lo) return rng.float(lo, hi);
+  const span = (360 - lo) + hi;           // wraps past 360
+  const v = lo + rng.next() * span;
+  return v % 360;
+}
+
+// sample ONE concrete value within the band, per type + dist
+function sampleParam(p, rng) {
+  switch (p.type) {
+    case 'scalar': {
+      const { randMin: lo, randMax: hi } = p.band;
+      let v;
+      if (p.dist === 'log' && lo > 0) v = rng.logUniform(lo, hi);
+      else if (p.dist === 'uniform') v = rng.float(lo, hi);
+      else v = rng.tri(lo, clamp(p.cur, lo, hi), hi);
+      return snap(v, p);
+    }
+    case 'angle': case 'hue': {
+      const { randMin: lo, randMax: hi } = p.band;
+      let v = (p.wrap || p.type === 'hue') ? sampleAngleBand(lo, hi, rng)
+            : (p.dist === 'uniform' ? rng.float(lo, hi) : rng.tri(lo, clamp(p.cur, lo, hi), hi));
+      return snap(v, p);
+    }
+    case 'int': {
+      const { randMin: lo, randMax: hi } = p.band;
+      const v = (p.dist === 'uniform' || p.dist === 'discrete-weighted')
+        ? rng.int(lo, hi) : Math.round(rng.tri(lo, clamp(p.cur, lo, hi), hi));
+      return clamp(v, lo, hi);
+    }
+    case 'enum': {
+      const set = (p.randSet && p.randSet.length) ? p.randSet : (p.options || []);
+      if (!set.length) return p.cur;
+      if (p.weights && p.weights.length === set.length) return rng.weighted(set.map((v, i) => ({ v, w: p.weights[i] })));
+      return rng.pick(set);
+    }
+    case 'bool': {
+      if (p.boolPolicy === 'on') return true;
+      if (p.boolPolicy === 'off') return false;
+      return rng.bool(p.randTrue == null ? 0.5 : p.randTrue);
+    }
+    case 'curve': return p.curveId || (p.curveFamily && p.curveFamily[0]) || 'sine'; // family roll → Phase 4
+    case 'colorAxis': {                                                                // a scalar manifold axis (dL/chroma/tension/spread)
+      const { randMin: lo, randMax: hi } = p.band;
+      return snap(p.dist === 'uniform' ? rng.float(lo, hi) : rng.tri(lo, clamp(p.cur, lo, hi), hi), p);
+    }
+    default: return p.cur;
+  }
+}
+
+// resolve a whole spec into {key: value} — each param sampled within its band (no locks; narrow a band to fix a value)
+function resolveSpec(rows, rng) {
+  const out = {};
+  for (const p of rows) out[p.key] = sampleParam(p, rng);
+  return out;
+}
+function currentValues(rows) { const o = {}; for (const p of rows) o[p.key] = p.cur; return o; }
+function rowsByKey(rows) { const m = {}; for (const p of rows) m[p.key] = p; return m; }
+
+// deep-clone a row spec so per-state band/cur/lock edits don't mutate the shared family template
+function cloneRows(rows) {
+  return rows.map(r => Object.assign({}, r, {
+    band: r.band ? { ...r.band } : undefined,
+    full: r.full ? { ...r.full } : undefined,
+    options: r.options ? [...r.options] : undefined,
+    randSet: r.randSet ? [...r.randSet] : undefined,
+  }));
+}
+
+
+// ===== js/tree.js =====
+// The constraint tree — content families (roots) with their param spec, whitelisted reveals/effects,
+// and default policies (decisions-log §B.1, transition-system-design §2-3). The Waves family is authored
+// from the psg-ui-design §7.2 PARAMS table (the #1 build-blocker artifact). Other families register as built.
+
+// reusable param-row groups shared across families
+function timingRows() {
+  return [
+    P({ key: 'introDur', label: 'Intro', unit: 's', group: 'timing', type: 'scalar', full: { min: 0.3, max: 6 }, band: { randMin: 1.4, randMax: 2.2 }, cur: 1.83, step: 0.01, dist: 'tri' }),
+    P({ key: 'loopDur', label: 'Loop', unit: 's', group: 'timing', type: 'scalar', full: { min: 0.3, max: 6 }, band: { randMin: 1.4, randMax: 2.2 }, cur: 1.73, step: 0.01, dist: 'tri' }),
+    P({ key: 'outroDur', label: 'Outro', unit: 's', group: 'timing', type: 'scalar', full: { min: 0.3, max: 6 }, band: { randMin: 1.2, randMax: 1.8 }, cur: 1.43, step: 0.01, dist: 'tri' }),
+  ];
+}
+// COLOUR rows (decisions-log §U2) — base block + derived roles + ground + scheme. Replaces the
+// generic palette sliders; the mood macro is gone, so the base-hue BAND is the "which part of the
+// wheel" control directly, and ground hue is its own exposed role.
+function colorRows(defaultHue = 196) {
+  return [
+    // BASE block — H + value(dL) + chroma-fraction, each a 3-knob band
+    P({ key: 'anchorHue', label: 'Base hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'base', full: { min: 0, max: 360 }, band: { randMin: 175, randMax: 260 }, cur: defaultHue, step: 1, dist: 'uniform', wrap: true }),
+    P({ key: 'anchorDL', label: 'Base lightness', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: -0.45, max: 0.45 }, band: { randMin: -0.06, randMax: 0.06 }, cur: 0.02, step: 0.01, dist: 'tri' }),
+    P({ key: 'anchorChromaF', label: 'Chroma', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1.0 }, band: { randMin: 0.88, randMax: 1.0 }, cur: 1.0, step: 0.01, dist: 'tri' }),
+    P({ key: 'colorAlpha', label: 'Opacity', unit: '%', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 1, randMax: 1 }, cur: 1.0, step: 0.01, dist: 'tri' }),
+    // DERIVED — siblings / gradient-partner / accent (relate to base)
+    P({ key: 'siblingSpread', label: 'Lightness spread', group: 'palette', type: 'colorAxis', colorRole: 'sibling', relatesTo: 'anchorHue', full: { min: 0.04, max: 0.40 }, band: { randMin: 0.10, randMax: 0.30 }, cur: 0.18, step: 0.01, dist: 'tri' }),
+    P({ key: 'gradientTemplate', label: 'Gradient partner', group: 'palette', type: 'enum', colorRole: 'gradient', relatesTo: 'anchorHue', options: ['mono', 'analogous', 'splitComplement', 'complement', 'triadic'], randSet: ['mono', 'analogous'], cur: 'analogous', dist: 'discrete-weighted' }),
+    P({ key: 'accentTemplate', label: 'Accent partner', group: 'palette', type: 'enum', colorRole: 'accent', relatesTo: 'anchorHue', options: ['splitComplement', 'complement', 'triadic', 'analogous'], randSet: ['splitComplement', 'complement'], cur: 'splitComplement', dist: 'discrete-weighted' }),
+    P({ key: 'accentTension', label: 'Accent tension', group: 'palette', type: 'colorAxis', colorRole: 'accent', relatesTo: 'anchorHue', full: { min: 0, max: 40 }, band: { randMin: 18, randMax: 30 }, cur: 25, step: 1, dist: 'tri' }),
+    // GROUND — hue + depth (replaces the mood's ground job), pinnable
+    P({ key: 'groundHue', label: 'Ground hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'ground', full: { min: 0, max: 360 }, band: { randMin: 185, randMax: 205 }, cur: 196, step: 1, dist: 'tri', wrap: true }),
+    P({ key: 'groundDark', label: 'Ground depth', group: 'palette', type: 'scalar', colorRole: 'ground', full: { min: 0, max: 1 }, band: { randMin: 0.55, randMax: 0.85 }, cur: 0.72, step: 0.01, dist: 'tri' }),
+    // policy
+    P({ key: 'setCount', label: 'Colour count', group: 'palette', type: 'int', full: { min: 1, max: 4 }, band: { randMin: 1, randMax: 3 }, cur: 2, step: 1, dist: 'discrete-weighted' }),
+  ];
+}
+function effectRows() {
+  return [
+    P({ key: 'vignette', label: 'Vignette', group: 'effects', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0.15, randMax: 0.4 }, cur: 0.32, step: 0.01, dist: 'tri' }),
+    P({ key: 'gradientTint', label: 'Gradient tint', group: 'effects', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0, randMax: 0.3 }, cur: 0, step: 0.01, dist: 'tri' }),
+    P({ key: 'pulse', label: 'Pulse', group: 'effects', type: 'scalar', full: { min: 0, max: 0.4 }, band: { randMin: 0, randMax: 0.12 }, cur: 0.05, step: 0.01, dist: 'tri' }),
+    P({ key: 'flash', label: 'Reveal flash', group: 'effects', type: 'bool', boolPolicy: 'either', randTrue: 0.3, cur: false }),
+  ];
+}
+function titleRows() {
+  return [
+    P({ key: 'titleText', label: 'Title', group: 'title', type: 'text', cur: 'PSG' }),
+    P({ key: 'titleFont', label: 'Font', group: 'title', type: 'enum', options: ['Sora', 'SoraBold', 'system'], randSet: ['Sora'], cur: 'Sora', dist: 'discrete-weighted' }),
+    P({ key: 'titleScale', label: 'Title size', group: 'title', type: 'scalar', full: { min: 0.1, max: 0.6 }, band: { randMin: 0.2, randMax: 0.4 }, cur: 0.3, step: 0.01, dist: 'tri' }),
+    P({ key: 'knockoutMode', label: 'Title style', group: 'title', type: 'enum', options: ['knockout', 'plate', 'ink'], randSet: ['knockout', 'plate'], cur: 'knockout', dist: 'discrete-weighted' }),
+    P({ key: 'titleShow', label: 'Show title', group: 'title', type: 'bool', boolPolicy: 'either', randTrue: 0.4, cur: false }),
+  ];
+}
+function motionRows() {
+  return [
+    P({ key: 'revealCurve', label: 'Reveal motion', group: 'motion', type: 'curve', curveId: 'easeInOutSine', curveFamily: ['easeInOutSine', 'smootherstep', 'easeOutBack', 'easeOutElastic'], curveJitter: { envelope: 0.15 } }),
+    P({ key: 'loopOsc', label: 'Loop motion', group: 'motion', type: 'curve', curveId: 'sine', curveFamily: ['sine', 'triangle', 'breathe', 'pulse'], curveJitter: { envelope: 0.12 } }),
+  ];
+}
+
+// shared STRUCTURE/reveal group — each family ships its own reveal whitelist + default. feather=0 only (user #5).
+function structureRows(reveals, defaultReveal) {
+  return [
+    P({ key: 'revealKind', label: 'Intro reveal', group: 'structure', type: 'enum', options: reveals, randSet: reveals, weights: reveals.map(r => r === defaultReveal ? 3 : 1), cur: defaultReveal, dist: 'discrete-weighted' }),
+    P({ key: 'edgeCurvature', label: 'Edge curve', group: 'structure', type: 'scalar', full: { min: -1, max: 1 }, band: { randMin: 0.2, randMax: 0.7 }, cur: 0.45, step: 0.01, dist: 'tri' }),
+    P({ key: 'featherFrac', label: 'Feather', group: 'structure', type: 'scalar', full: { min: 0, max: 0.15 }, band: { randMin: 0, randMax: 0 }, cur: 0, step: 0.005, dist: 'tri' }),
+    P({ key: 'sweepDir', label: 'Direction', unit: '°', group: 'structure', type: 'angle', full: { min: 0, max: 360 }, band: { randMin: 120, randMax: 150 }, cur: 135, step: 1, dist: 'tri', wrap: true }),
+    P({ key: 'mirrorIntro', label: 'Outro mirrors intro', group: 'structure', type: 'bool', boolPolicy: 'on', randTrue: 0.85, cur: true }),
+    P({ key: 'seamlessWrap', label: 'Seamless wrap', group: 'structure', type: 'bool', boolPolicy: 'either', randTrue: 0.5, cur: false }),
+  ];
+}
+// per-family ELEMENT groups (each its own — no aliasing)
+function wavesElement() {
+  return [
+    P({ key: 'waveCount', label: 'Wave count', group: 'element', type: 'int', full: { min: 2, max: 12 }, band: { randMin: 3, randMax: 6 }, cur: 5, step: 1, dist: 'discrete-weighted' }),
+    P({ key: 'waveFreq', label: 'Frequency', group: 'element', type: 'scalar', full: { min: 0.5, max: 8 }, band: { randMin: 0.8, randMax: 2.0 }, cur: 1.2, step: 0.01, dist: 'log' }),
+    P({ key: 'waveAmp', label: 'Amplitude', group: 'element', type: 'scalar', full: { min: 0, max: 0.4 }, band: { randMin: 0.06, randMax: 0.18 }, cur: 0.12, step: 0.005, dist: 'tri' }),
+    P({ key: 'warpStrength', label: 'Warp', group: 'element', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0.1, randMax: 0.4 }, cur: 0.22, step: 0.01, dist: 'tri' }),
+    P({ key: 'flowSpeed', label: 'Flow', group: 'motion', type: 'scalar', full: { min: -1, max: 1 }, band: { randMin: -0.3, randMax: 0.3 }, cur: 0, step: 0.01, dist: 'tri' }),
+    P({ key: 'bandSharpness', label: 'Sharpness', group: 'element', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0.3, randMax: 0.7 }, cur: 0.5, step: 0.01, dist: 'tri' }),
+    P({ key: 'skewAngle', label: 'Skew', unit: '°', group: 'element', type: 'angle', full: { min: -45, max: 45 }, band: { randMin: -20, randMax: 20 }, cur: 0, step: 1, dist: 'tri' }),
+    P({ key: 'phaseOffset', label: 'Phase', group: 'element', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0, randMax: 1 }, cur: 0, step: 0.01, dist: 'uniform' }),
+    P({ key: 'mergeSplit', label: 'Merge/split', group: 'element', type: 'bool', boolPolicy: 'on', randTrue: 0.7, cur: true }),
+  ];
+}
+function barsElement() {
+  return [
+    P({ key: 'barCount', label: 'Bar count', group: 'element', type: 'int', full: { min: 1, max: 8 }, band: { randMin: 3, randMax: 5 }, cur: 4, step: 1, dist: 'discrete-weighted' }),
+    P({ key: 'bandGapFrac', label: 'Band gap', group: 'element', type: 'scalar', full: { min: 0, max: 0.15 }, band: { randMin: 0, randMax: 0.05 }, cur: 0.02, step: 0.005, dist: 'tri' }),
+    P({ key: 'hardEdge', label: 'Crisp edges', group: 'element', type: 'bool', boolPolicy: 'on', randTrue: 0.8, cur: true }),
+    P({ key: 'skewAngle', label: 'Skew', unit: '°', group: 'element', type: 'angle', full: { min: -45, max: 45 }, band: { randMin: -10, randMax: 10 }, cur: 0, step: 1, dist: 'tri' }),
+  ];
+}
+function shapeGridElement() {
+  return [
+    P({ key: 'markKind', label: 'Mark', group: 'element', type: 'enum', options: ['circle', 'star', 'square', 'hexagon', 'ring'], randSet: ['circle', 'star', 'square', 'hexagon', 'ring'], cur: 'circle', dist: 'discrete-weighted' }),
+    P({ key: 'waveCount', label: 'Density', group: 'element', type: 'int', full: { min: 4, max: 24 }, band: { randMin: 8, randMax: 14 }, cur: 10, step: 1, dist: 'discrete-weighted' }),
+    P({ key: 'skewAngle', label: 'Skew', unit: '°', group: 'element', type: 'angle', full: { min: -45, max: 45 }, band: { randMin: 0, randMax: 0 }, cur: 0, step: 1, dist: 'tri' }),
+  ];
+}
+function onlineElement() {
+  return [
+    P({ key: 'onlineSplitPos', label: 'Split position', group: 'element', type: 'scalar', full: { min: 0.1, max: 0.9 }, band: { randMin: 0.35, randMax: 0.65 }, cur: 0.5, step: 0.01, dist: 'tri' }),
+    P({ key: 'onlineGradient', label: 'Gradient fill', group: 'element', type: 'bool', boolPolicy: 'either', randTrue: 0.5, cur: false }),
+    P({ key: 'skewAngle', label: 'Seam angle', unit: '°', group: 'element', type: 'angle', full: { min: 0, max: 360 }, band: { randMin: 110, randMax: 160 }, cur: 135, step: 1, dist: 'tri', wrap: true }),
+  ];
+}
+function facetElement(cfg) {
+  const lo = cfg === 'mosaic';
+  return [
+    P({ key: 'facetDensity', label: 'Facet density', group: 'element', type: 'scalar', full: { min: 8, max: 120 }, band: { randMin: 24, randMax: 60 }, cur: 40, step: 1, dist: 'tri' }),
+    P({ key: 'waveCount', label: 'Field scale', group: 'element', type: 'int', full: { min: 2, max: 12 }, band: { randMin: 4, randMax: 8 }, cur: 6, step: 1, dist: 'discrete-weighted' }),
+    P({ key: 'facetJitter', label: 'Jitter', group: 'element', type: 'scalar', full: { min: 0, max: 1 }, band: lo ? { randMin: 0.05, randMax: 0.2 } : { randMin: 0.3, randMax: 0.7 }, cur: lo ? 0.12 : 0.5, step: 0.01, dist: 'tri' }),
+    P({ key: 'edgeStyle', label: 'Edge style', group: 'element', type: 'enum', options: ['flat', 'gradient'], randSet: lo ? ['gradient'] : ['flat', 'gradient'], cur: lo ? 'gradient' : 'flat', dist: 'discrete-weighted' }),
+    P({ key: 'configPreset', label: 'Config', group: 'element', type: 'enum', options: ['crystal', 'mosaic'], randSet: [cfg], cur: cfg, dist: 'discrete-weighted' }),
+    P({ key: 'warpStrength', label: 'Drift', group: 'element', type: 'scalar', full: { min: 0, max: 1 }, band: { randMin: 0.05, randMax: 0.25 }, cur: 0.12, step: 0.01, dist: 'tri' }),
+  ];
+}
+function blankElement() {
+  return [P({ key: 'onlineGradient', label: 'Gradient fill', group: 'element', type: 'bool', boolPolicy: 'either', randTrue: 0.5, cur: false })];
+}
+
+const wrap = (element, reveals, defReveal) => [...timingRows(), ...element, ...structureRows(reveals, defReveal), ...colorRows(196), ...motionRows(), ...effectRows(), ...titleRows()];
+function wavesRows() { return wrap(wavesElement(), ['wipe', 'growOut', 'whiteBloom'], 'growOut'); }
+function barsRows() { return wrap(barsElement(), ['wipe', 'whiteBloom'], 'wipe'); }
+function shapeGridRows() { return wrap(shapeGridElement(), ['dotSweep', 'wipe', 'whiteBloom'], 'dotSweep'); }
+function onlineRows() { return wrap(onlineElement(), ['wipe', 'whiteBloom'], 'wipe'); }
+function onlineFacetsRows() { return wrap(facetElement('mosaic'), ['shatter', 'wipe', 'whiteBloom'], 'shatter'); }
+function horizonRows() { return wrap(facetElement('crystal'), ['shatter', 'wipe', 'whiteBloom'], 'shatter'); }
+function blankRows() { return wrap(blankElement(), ['wipe', 'whiteBloom'], 'wipe'); }
+
+const FAMILIES = {
+  waves: { id: 'waves', label: 'Waves', familyId: 0, weight: 1, reveals: ['wipe', 'growOut', 'whiteBloom'], policies: { outroSymmetry: 'edge-coupled', revealStyle: 'drag-in', defaultReveal: 'growOut' }, rows: wavesRows() },
+  bars: { id: 'bars', label: 'Bars', familyId: 1, weight: 0.8, reveals: ['wipe', 'whiteBloom'], policies: { outroSymmetry: 'edge-coupled', revealStyle: 'reveal-static', defaultReveal: 'wipe' }, rows: barsRows() },
+  shapeGrid: { id: 'shapeGrid', label: 'Grid', familyId: 2, weight: 0.8, reveals: ['dotSweep', 'wipe', 'whiteBloom'], policies: { outroSymmetry: 'edge-coupled', revealStyle: 'reveal-static', defaultReveal: 'dotSweep' }, rows: shapeGridRows() },
+  online: { id: 'online', label: 'Split', familyId: 3, weight: 0.7, reveals: ['wipe', 'whiteBloom'], policies: { outroSymmetry: 'edge-coupled', revealStyle: 'reveal-static', defaultReveal: 'wipe' }, rows: onlineRows() },
+  onlineFacets: { id: 'onlineFacets', label: 'Mosaic', familyId: 4, weight: 0.7, reveals: ['shatter', 'wipe', 'whiteBloom'], policies: { outroSymmetry: 'free', revealStyle: 'reveal-static', defaultReveal: 'shatter' }, rows: onlineFacetsRows() },
+  horizonFestival: { id: 'horizonFestival', label: 'Crystal', familyId: 5, weight: 0.6, reveals: ['shatter', 'wipe', 'whiteBloom'], policies: { outroSymmetry: 'free', revealStyle: 'reveal-static', defaultReveal: 'shatter', knockoutMode: 'plate' }, rows: horizonRows() },
+  blank: { id: 'blank', label: 'Simple', familyId: 6, weight: 0.4, reveals: ['wipe', 'whiteBloom'], policies: { outroSymmetry: 'edge-coupled', revealStyle: 'reveal-static', defaultReveal: 'wipe' }, rows: blankRows() },
+};
+
+const REVEAL_ID = { wipe: 0, growOut: 1, shapePop: 2, shatter: 2, dotSweep: 3, whiteBloom: 4 };
+function familyList() { return Object.keys(FAMILIES); }
+
+
+// ===== js/randomize.js =====
+// Randomize engine — rules-only (decisions-log U7). Pick a family (weighted), resolve its params
+// within their bands, assemble an on-manifold palette. No mood macro: the anchor-hue BAND is the hue
+// region directly. Honours per-role colour pins + per-param locks. Per-state row clones (band edits
+// don't mutate the shared template). Deterministic from seed.
+
+// enum-string → shader int maps (resolved at roll time so drawFrame stays branch-free)
+const MARK_ID = { circle: 0, star: 1, square: 2, hexagon: 3, ring: 4 };
+const EDGE_ID = { flat: 0, gradient: 1 };
+const CONFIG_ID = { crystal: 0, mosaic: 1 };
+function encodeEnums(params) {
+  if (typeof params.markKind === 'string') params.markKind = MARK_ID[params.markKind] ?? 0;
+  if (typeof params.edgeStyle === 'string') params.edgeStyle = EDGE_ID[params.edgeStyle] ?? 1;
+  if (typeof params.configPreset === 'string') params.configPreset = CONFIG_ID[params.configPreset] ?? 0;
+}
+// hue-arc (deg, 0..180) between the two loop colours → drives the auto white-bloom (F5)
+function hueArcDeg(palette) {
+  const a = palette.anchor, b = palette.dark;
+  if (!a || !b || a.H == null || b.H == null) return 0;
+  let d = Math.abs(a.H - b.H) % 360; return d > 180 ? 360 - d : d;
+}
+
+// pick a family — honour an explicit lock, else the randomize-eligible pool (dotted tiles), else all (weighted)
+function pickFamily(rng, lock, pool) {
+  if (lock && FAMILIES[lock]) return lock;
+  const keys = (pool && pool.length) ? pool.filter(k => FAMILIES[k]) : familyList();
+  return rng.weighted((keys.length ? keys : familyList()).map(k => ({ v: k, w: FAMILIES[k].weight || 1 })));
+}
+
+function rollTransition(seedStr, opts = {}) {
+  const rng = makeRng(seedStr);
+  const familyKey = opts.family || pickFamily(rng, opts.familyLock, opts.famRand);
+  const fam = FAMILIES[familyKey];
+  // carry the user's band edits if staying in the same family; else clone the family template
+  const rows = (opts.rows && opts.rowsFamily === familyKey) ? opts.rows : cloneRows(fam.rows);
+  const params = resolveSpec(rows, rng);
+  params.family = fam.familyId;
+  params._familyKey = familyKey;
+  params.revealId = REVEAL_ID[params.revealKind] ?? 0;
+  const palette = assembleTransition(rng, params);
+  encodeEnums(params);
+  params.hueArc = hueArcDeg(palette);
+  return { seed: seedStr, familyKey, params, palette, rows };
+}
+
+function defaultState(familyKey = 'waves', seed = 'psg-default') {
+  const fam = FAMILIES[familyKey];
+  const rows = cloneRows(fam.rows);
+  const params = currentValues(rows);
+  params.family = fam.familyId;
+  params._familyKey = familyKey;
+  params.revealId = REVEAL_ID[params.revealKind] ?? 0;
+  const palette = assembleTransition(makeRng(seed), params);
+  encodeEnums(params);
+  params.hueArc = hueArcDeg(palette);
+  return { seed, familyKey, params, palette, rows };
+}
+
+
+// ===== js/glsl.js =====
+// GLSL — the uber fragment shader. Shared preamble (UV, noise, REVEAL MATTES + dispatch, vignette, FX)
+// + per-family functions dispatched by uFamily. The matte alpha IS the output alpha. Reveal dispatch
+// (uRevealKind) makes families distinct: wipe / growOut / shatter / dotSweep / whiteBloom.
+
+const VERT = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p*2.0-1.0,0.0,1.0); }`;
+
+const UNIFORMS = [
+  'uResolution', 'uTotalSize', 'uTileOffset', 'uT', 'uFamily',
+  'uIntroEnd', 'uLoopEnd',
+  'uRevealKind', 'uSweepDir', 'uEdgeCurvature', 'uFeatherFrac',
+  'uWaveCount', 'uWaveFreq', 'uWaveAmp', 'uWarpStrength', 'uFlowSpeed', 'uBandSharpness', 'uSkewAngle', 'uPhaseOffset', 'uMergeSplit',
+  'uVignette', 'uGradientTint', 'uPulse', 'uFlash',
+  'uColA', 'uColB', 'uGroundTop', 'uGroundBot', 'uAccent',
+  'uMarkKind', 'uBarCount', 'uBandGapFrac', 'uHardEdge', 'uFacetDensity', 'uFacetJitter',
+  'uEdgeStyle', 'uConfigPreset', 'uOnlineSplitPos', 'uOnlineGradient', 'uHueArc', 'uGradient', 'uColorAlpha',
+];
+
+const FRAG_PREAMBLE = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2  uResolution, uTotalSize, uTileOffset;
+uniform float uT;
+uniform int   uFamily, uRevealKind;
+uniform float uIntroEnd, uLoopEnd;
+uniform float uSweepDir, uEdgeCurvature, uFeatherFrac;
+uniform int   uWaveCount;
+uniform float uWaveFreq, uWaveAmp, uWarpStrength, uFlowSpeed, uBandSharpness, uSkewAngle, uPhaseOffset, uMergeSplit;
+uniform float uVignette, uGradientTint, uPulse, uFlash;
+uniform vec3  uColA, uColB, uGroundTop, uGroundBot, uAccent;
+uniform int   uMarkKind, uHardEdge, uEdgeStyle, uConfigPreset, uOnlineGradient;
+uniform float uBarCount, uBandGapFrac, uFacetDensity, uFacetJitter, uOnlineSplitPos, uHueArc;
+uniform vec3  uGradient;
+uniform float uColorAlpha;     // global per-colour opacity (default 1); composites within the frame
+const float TAU = 6.28318530718, PI = 3.14159265359;
+
+vec2 uv01(){ return (gl_FragCoord.xy + uTileOffset) / uTotalSize; }
+float aspect(){ return uTotalSize.x / uTotalSize.y; }
+
+vec2 hash22(vec2 p){ p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3))); return -1.0+2.0*fract(sin(p)*43758.5453123); }
+float gnoise(vec2 p){
+  vec2 i=floor(p), f=fract(p), u=f*f*(3.0-2.0*f);
+  return mix(mix(dot(hash22(i+vec2(0,0)),f-vec2(0,0)), dot(hash22(i+vec2(1,0)),f-vec2(1,0)), u.x),
+             mix(dot(hash22(i+vec2(0,1)),f-vec2(0,1)), dot(hash22(i+vec2(1,1)),f-vec2(1,1)), u.x), u.y);
+}
+float fbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<4;i++){ s+=a*gnoise(p); p=p*2.02+vec2(11.7,3.1); a*=0.5; } return s; }
+
+float revealProgress(){
+  if (uT < uIntroEnd)      return clamp(uT / max(uIntroEnd, 1e-4), 0.0, 1.0);
+  else if (uT < uLoopEnd)  return 1.0;
+  else                     return clamp(1.0 - (uT - uLoopEnd) / max(1.0 - uLoopEnd, 1e-4), 0.0, 1.0);
+}
+
+// ---- REVEAL MATTES — coverage in [0,1]; prog drives the front 0→1. Seamless + tile-continuous. ----
+float sweepCoord(vec2 uv){
+  float sd = radians(uSweepDir);
+  vec2 d = vec2(cos(sd), sin(sd)), perp = vec2(-d.y, d.x);
+  return dot(uv - 0.5, d) + 0.5 + uEdgeCurvature * 0.18 * sin(dot(uv - 0.5, perp) * PI);
+}
+float wipeMatte(vec2 uv, float prog){
+  float fe = uFeatherFrac, coord = sweepCoord(uv), front = prog * (1.0 + 2.0*fe) - fe;
+  if (fe <= 0.0) return step(coord, front);                       // hard edge when feather==0
+  return 1.0 - smoothstep(front, front + fe, coord);
+}
+float growOutMatte(vec2 uv, float prog){
+  float dens = max(2.0, uWaveFreq * float(uWaveCount));
+  vec2 p = vec2(uv.x*aspect(), uv.y) * dens, fp = fract(p);
+  float lead = prog * 1.6 - 0.3;
+  float r = clamp((lead - sweepCoord(uv)) * 2.4 + 0.5, 0.0, 1.0);
+  return smoothstep(r + 0.06, r - 0.06, length(fp - 0.5) * 1.41);
+}
+float shatterMatte(vec2 uv, float prog){
+  float dens = max(6.0, uFacetDensity);
+  vec2 ip = floor(vec2(uv.x*aspect(), uv.y) * (dens*0.12));
+  float cellRnd = fract(sin(dot(ip, vec2(12.9898,78.233))) * 43758.5453);
+  float arrive = floor(mix(sweepCoord(uv), cellRnd, 0.35) * 6.0) / 6.0;   // stepped batches
+  return step(arrive, prog);
+}
+float dotSweepMatte(vec2 uv, float prog){
+  vec2 p = vec2(uv.x*aspect(), uv.y);
+  float dens = max(2.0, float(uWaveCount)*1.6);
+  vec2 cell = vec2(1.0/dens), id = floor(p / cell);
+  vec2 cen = (id + vec2(0.5 + mod(id.y,2.0)*0.5, 0.5)) * cell;
+  float grow = smoothstep(sweepCoord(cen) - 0.02, sweepCoord(cen) + 0.12, prog) * 0.92;
+  return 1.0 - smoothstep(grow - 0.10, grow, length(p - cen) / (cell.x*0.5));
+}
+float whiteBloomMatte(vec2 uv, float prog){
+  float r = length((uv - 0.5) * vec2(aspect(), 1.0)) * 1.30, front = prog * 1.35;
+  return 1.0 - smoothstep(front - 0.04, front, r);
+}
+float revealAlpha(vec2 uv, float prog){
+  float m;
+  if      (uRevealKind == 1) m = growOutMatte(uv, prog);
+  else if (uRevealKind == 2) m = shatterMatte(uv, prog);
+  else if (uRevealKind == 3) m = dotSweepMatte(uv, prog);
+  else if (uRevealKind == 4) m = whiteBloomMatte(uv, prog);
+  else                       m = wipeMatte(uv, prog);
+  return max(m, smoothstep(0.97, 1.0, prog));   // guarantee FULL coverage in the held loop (no see-through)
+}
+
+float vignette(vec2 uv){
+  float r = length((uv - 0.5) * vec2(aspect(), 1.0)) * 1.25;
+  return 1.0 - uVignette * smoothstep(0.35, 1.05, r);
+}
+// post-FX: seamless pulse + white-bloom-to-white at the reveal midpoint (selected OR far-hue auto) + flash
+vec3 applyFX(vec3 col, vec2 uv){
+  col *= 1.0 + uPulse * sin(TAU*uT);
+  float bloomOn = (uRevealKind == 4 || uHueArc > 150.0) ? 1.0 : 0.0;
+  float prog = revealProgress();
+  float mid = 1.0 - abs(prog*2.0 - 1.0);
+  float inSweep = (uT < uIntroEnd || uT > uLoopEnd) ? 1.0 : 0.0;
+  col = mix(col, vec3(1.0), bloomOn * inSweep * mid * 0.85);
+  col += uFlash * exp(-pow((uT - uIntroEnd) / 0.045, 2.0)) * 0.6;
+  return col;
+}
+
+// ---- SDF marks (shape-grid) ----
+float sdCircle(vec2 p, float r){ return length(p) - r; }
+float sdBox(vec2 p, float r){ vec2 d = abs(p) - r; return length(max(d,0.0)) + min(max(d.x,d.y),0.0); }
+float sdHex(vec2 p, float r){
+  const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+  p = abs(p); p -= 2.0*min(dot(k.xy,p),0.0)*k.xy;
+  p -= vec2(clamp(p.x,-k.z*r,k.z*r), r); return length(p)*sign(p.y);
+}
+float sdStar5(vec2 p, float r){
+  float an = PI/5.0;
+  float bn = mod(atan(p.x,p.y), 2.0*an) - an;
+  p = length(p)*vec2(cos(bn), abs(sin(bn)));
+  p -= vec2(r, 0.0); vec2 ba = vec2(-0.5, 0.866)*0.5;
+  p -= ba*clamp(dot(p,ba),0.0,r); return length(p)*sign(p.x);
+}
+float markSDF(vec2 p, float r){
+  if (uMarkKind == 1) return sdStar5(p, r);
+  if (uMarkKind == 2) return sdBox(p, r*0.82);
+  if (uMarkKind == 3) return sdHex(p, r*0.92);
+  if (uMarkKind == 4) return abs(sdCircle(p, r*0.82)) - r*0.16;
+  return sdCircle(p, r);
+}
+`;
+
+const FRAG_FAMILIES = `
+// ---- family 0: WAVES ----
+vec4 family_waves(vec2 uv){
+  vec2 p = vec2(uv.x*aspect(), uv.y);
+  float sk = radians(uSkewAngle);
+  vec2 axis = vec2(sin(sk), cos(sk));
+  float s = dot(p, axis);
+  vec2 drift = vec2(sin(TAU*uT), cos(TAU*uT)) * (uWarpStrength*0.12 + uWaveAmp);
+  float warp = fbm(p*(uWaveFreq*0.7) + drift) * (uWarpStrength + uWaveAmp*2.0) * ((uMergeSplit > 0.5) ? 1.7 : 1.0);
+  float band = s*uWaveFreq*float(uWaveCount)*0.5 + warp + uFlowSpeed*uT*float(uWaveCount) + uPhaseOffset;
+  float tri = abs(fract(band) - 0.5) * 2.0;
+  float sharp = mix(1.2, 16.0, uBandSharpness);
+  float m = smoothstep(0.5 - 0.5/sharp, 0.5 + 0.5/sharp, tri);
+  vec3 col = mix(uColA, uColB, m);
+  col = mix(col, uGradient, uGradientTint * (0.35 + 0.4*uv.y));   // gradient-partner tint
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+
+// ---- family 1: BARS — crisp discrete colour bands ----
+vec4 family_bars(vec2 uv){
+  float sk = radians(uSkewAngle);
+  vec2 axis = vec2(sin(sk), cos(sk));
+  float g = clamp(dot(vec2(uv.x*aspect(), uv.y) - 0.5, axis) + 0.5, 0.0, 1.0);
+  float n = max(1.0, uBarCount);
+  float fb = g * n, idx = floor(fb), frac = fract(fb);
+  float sel = mod(idx, 4.0);
+  vec3 col = (sel < 0.5) ? uColA : (sel < 1.5) ? uColB : (sel < 2.5) ? uGradient : uAccent;
+  float inGap = step(frac, uBandGapFrac*0.5) + step(1.0 - uBandGapFrac*0.5, frac);
+  col = mix(col, uGroundBot, clamp(inGap,0.0,1.0) * 0.85);
+  if (uHardEdge == 0) col = mix(col, mix(uColA,uColB,frac), 0.25);     // soft = blend toward neighbour
+  col = mix(col, mix(col, uGroundBot, uv.y*0.5), uGradientTint);
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+
+// ---- family 2: SHAPE-GRID — staggered SDF marks growing in over a gradient ----
+vec4 family_shapeGrid(vec2 uv){
+  vec3 bg = mix(uGroundTop, uGroundBot, uv.y);
+  vec2 p = vec2(uv.x*aspect(), uv.y);
+  float dens = max(2.0, float(uWaveCount)*1.6);
+  vec2 cell = vec2(1.0/dens), id = floor(p / cell);
+  vec2 cen = (id + vec2(0.5 + mod(id.y,2.0)*0.5, 0.5)) * cell;
+  vec2 local = (p - cen) / cell.x;
+  float grow = smoothstep(sweepCoord(cen) - 0.02, sweepCoord(cen) + 0.12, revealProgress()) * 0.42;
+  float mark = 1.0 - smoothstep(-0.02, 0.02, markSDF(local, grow));
+  vec3 col = mix(bg, uColA, mark);
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+
+// ---- family 3: ONLINE — flat/gradient panel split by a hard diagonal seam ----
+vec4 family_online(vec2 uv){
+  float asp = aspect();
+  float sd = radians(uSkewAngle);                       // the family's own "Seam angle" param
+  vec2 d = vec2(cos(sd), sin(sd));
+  float s = dot(vec2(uv.x*asp, uv.y) - vec2(0.5*asp, 0.5), d) + (uOnlineSplitPos - 0.5);
+  float side = step(0.0, s);
+  vec3 panelA = (uOnlineGradient == 1) ? mix(uColA, mix(uColA, uColB, 0.6), clamp(s*1.5 + 0.5, 0.0, 1.0)) : uColA;
+  vec3 col = mix(panelA, uColB, side);
+  col = mix(col, uAccent, 1.0 - smoothstep(0.0, 0.012, abs(s)));        // accent seam line
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+
+// ---- family_facet — low-poly crystal; config branches crystal vs online_facets ----
+vec4 family_facet(vec2 uv){
+  float jit = (uConfigPreset == 1) ? min(uFacetJitter, 0.25) : uFacetJitter;
+  float scale = (float(uWaveCount)*1.4 + 3.0) * ((uConfigPreset==1) ? 1.6 : 1.0);
+  vec2 p = vec2(uv.x*aspect(), uv.y) * scale;
+  p += vec2(sin(TAU*uT), cos(TAU*uT)) * uWarpStrength*0.4;
+  vec2 ip = floor(p), fp = fract(p);
+  float md = 9.0; vec2 mcell = ip, mdiff = vec2(0.0);
+  for (int y=-1;y<=1;y++) for (int x=-1;x<=1;x++){
+    vec2 g = vec2(float(x), float(y));
+    vec2 o = mix(vec2(0.5), hash22(ip+g)*0.5 + 0.5, jit);
+    vec2 r = g + o - fp; float dd = dot(r,r);
+    if (dd < md){ md = dd; mcell = ip+g; mdiff = r; }
+  }
+  float cr = fract(sin(dot(mcell, vec2(12.9898,78.233))) * 43758.5453);
+  vec3 col = mix(uColB, uColA, cr);
+  col = mix(col, uAccent, step(0.93, cr) * 0.7 * ((uConfigPreset==0) ? 1.0 : 0.0));
+  float shade = (uEdgeStyle == 1)
+      ? 0.80 + 0.20 * clamp(dot(normalize(mdiff+1e-4), vec2(0.3,0.95))*0.5+0.5, 0.0, 1.0)
+      : 0.86 + 0.14 * fract(cr * 7.0);
+  col *= shade;
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+
+// ---- family 6: BLANK / SIMPLE — flat or single-gradient fill ----
+vec4 family_blank(vec2 uv){
+  vec3 col = (uOnlineGradient == 1) ? mix(uColA, uColB, uv.y) : uColA;
+  col = mix(col, mix(col, uGroundBot, uv.y*0.5), uGradientTint);
+  col = applyFX(col, uv) * vignette(uv);
+  return vec4(col, revealAlpha(uv, revealProgress()));
+}
+`;
+
+const FRAG_MAIN = `
+void main(){
+  vec2 uv = uv01();
+  vec4 c;
+  if      (uFamily == 0) c = family_waves(uv);
+  else if (uFamily == 1) c = family_bars(uv);
+  else if (uFamily == 2) c = family_shapeGrid(uv);
+  else if (uFamily == 3) c = family_online(uv);
+  else if (uFamily == 4) c = family_facet(uv);   // online_facets (configPreset=1)
+  else if (uFamily == 5) c = family_facet(uv);   // horizon festival (configPreset=0)
+  else                   c = family_blank(uv);   // 6 = blank
+  c.rgb = mix(uGroundTop, c.rgb, uColorAlpha);     // per-colour opacity: see-through to the layer beneath (ground), matte intact
+  fragColor = c;
+}`;
+
+function buildFragment() { return FRAG_PREAMBLE + FRAG_FAMILIES + FRAG_MAIN; }
+
+
+// ===== js/engine.js =====
+// WebGL2 engine — one {alpha:true, premultipliedAlpha:false} context, attrib-less full-screen triangle,
+// ONE pure drawFrame(state, t), and the alpha self-check that gates export. Preview == export bar size.
+
+const col3 = c => c && c.rgb ? [c.rgb[0] / 255, c.rgb[1] / 255, c.rgb[2] / 255] : [0, 0, 0];
+
+function createEngine(canvas) {
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: false });
+  if (!gl) throw new Error('WebGL2 unavailable in this browser');
+  const hp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+  const highpOK = !!(hp && hp.precision > 0);
+
+  const prog = linkProgram(gl, VERT, buildFragment());
+  const U = {}; for (const n of UNIFORMS) U[n] = gl.getUniformLocation(prog, n);
+  const vao = gl.createVertexArray();
+  gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  gl.useProgram(prog); gl.bindVertexArray(vao);
+
+  function setF(n, v) { if (U[n]) gl.uniform1f(U[n], v); }
+  function setI(n, v) { if (U[n]) gl.uniform1i(U[n], v | 0); }
+  function set2(n, a, b) { if (U[n]) gl.uniform2f(U[n], a, b); }
+  function set3(n, v) { if (U[n]) gl.uniform3f(U[n], v[0], v[1], v[2]); }
+
+  // PURE: identical (state,t) → identical pixels. state = { params, palette }.
+  function drawFrame(state, t, opts = {}) {
+    const W = canvas.width, H = canvas.height;
+    const p = state.params || {}, pal = state.palette || {};
+    set2('uResolution', W, H);
+    set2('uTotalSize', opts.totalW || W, opts.totalH || H);
+    set2('uTileOffset', opts.offX || 0, opts.offY || 0);
+    setF('uT', t);
+    setI('uFamily', p.family | 0);
+    // stage boundaries from durations
+    const iD = p.introDur || 1.83, lD = p.loopDur || 1.73, oD = p.outroDur || 1.43, tot = iD + lD + oD;
+    setF('uIntroEnd', iD / tot); setF('uLoopEnd', (iD + lD) / tot);
+    setI('uRevealKind', p.revealId | 0);
+    setF('uSweepDir', num(p.sweepDir, 135)); setF('uEdgeCurvature', num(p.edgeCurvature, 0.45)); setF('uFeatherFrac', num(p.featherFrac, 0.02));
+    setI('uWaveCount', num(p.waveCount, 5)); setF('uWaveFreq', num(p.waveFreq, 2.1)); setF('uWaveAmp', num(p.waveAmp, 0.12));
+    setF('uWarpStrength', num(p.warpStrength, 0.22)); setF('uFlowSpeed', num(p.flowSpeed, 0)); setF('uBandSharpness', num(p.bandSharpness, 0.5));
+    setF('uSkewAngle', num(p.skewAngle, 0)); setF('uPhaseOffset', num(p.phaseOffset, 0)); setF('uMergeSplit', p.mergeSplit ? 1 : 0);
+    setF('uVignette', num(p.vignette, 0.32)); setF('uGradientTint', num(p.gradientTint, 0)); setF('uPulse', num(p.pulse, 0)); setF('uFlash', p.flash ? 1 : 0);
+    setI('uMarkKind', num(p.markKind, 0)); setF('uBarCount', num(p.barCount, 4)); setF('uBandGapFrac', num(p.bandGapFrac, 0.02)); setI('uHardEdge', p.hardEdge ? 1 : 0);
+    setF('uFacetDensity', num(p.facetDensity, 40)); setF('uFacetJitter', num(p.facetJitter, 0.5)); setI('uEdgeStyle', num(p.edgeStyle, 1)); setI('uConfigPreset', num(p.configPreset, 0));
+    setF('uOnlineSplitPos', num(p.onlineSplitPos, 0.5)); setI('uOnlineGradient', p.onlineGradient ? 1 : 0); setF('uHueArc', num(p.hueArc, 0)); setF('uColorAlpha', num(p.colorAlpha, 1));
+    set3('uColA', col3(pal.anchor)); set3('uColB', col3(pal.dark)); set3('uAccent', col3(pal.accent)); set3('uGradient', col3(pal.gradient));
+    set3('uGroundTop', col3(pal.groundStops && pal.groundStops[0])); set3('uGroundBot', col3(pal.groundStops && pal.groundStops[2]));
+    gl.viewport(0, 0, W, H);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  function readRGBA() {
+    const W = canvas.width, H = canvas.height, px = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    return { px, W, H };
+  }
+  // matte contract: a real transition has both transparent and opaque pixels at some t (gates export)
+  function alphaSelfCheck(state, t = 0.5) {
+    drawFrame(state, t);
+    const { px } = readRGBA();
+    let mn = 255, mx = 0; for (let i = 3; i < px.length; i += 4) { const a = px[i]; if (a < mn) mn = a; if (a > mx) mx = a; }
+    return { minA: mn, maxA: mx, ok: mn <= 1 && mx >= 254 };
+  }
+
+  return { gl, prog, drawFrame, readRGBA, alphaSelfCheck, highpOK, canvas };
+}
+const num = (v, d) => (v == null || Number.isNaN(v)) ? d : v;
+
+function linkProgram(gl, vsrc, fsrc) {
+  const vs = compile(gl, gl.VERTEX_SHADER, vsrc), fs = compile(gl, gl.FRAGMENT_SHADER, fsrc);
+  const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Link: ' + gl.getProgramInfoLog(p));
+  gl.deleteShader(vs); gl.deleteShader(fs); return p;
+}
+function compile(gl, type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error('Shader compile:\n' + gl.getShaderInfoLog(s) + '\n--- source ---\n' + src.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n'));
+  return s;
+}
+
+
+// ===== js/png.js =====
+// Minimal LOSSLESS PNG encoder — colour-type 6 (RGBA), 8-bit, no palette, no interlace. Straight
+// alpha preserved (the matte export contract). DEFLATE via the global `fflate` (vendored UMD).
+// Tiny + node-testable; replaces UPNG+pako (no heavy libs). Filter "None" per scanline → always lossless.
+
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+
+function chunk(type, data) {
+  const len = data.length, out = new Uint8Array(12 + len), dv = new DataView(out.buffer);
+  dv.setUint32(0, len);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(data, 8);
+  dv.setUint32(8 + len, crc32(out.subarray(4, 8 + len)));
+  return out;
+}
+
+function encodePNG(rgba, w, h) {
+  const ff = (typeof fflate !== 'undefined') ? fflate : (typeof globalThis !== 'undefined' ? globalThis.fflate : null);
+  if (!ff || !ff.zlibSync) throw new Error('fflate not loaded (need zlibSync)');
+  // raw image data: a filter byte (0 = None) before each scanline of w*4 bytes
+  const stride = w * 4, raw = new Uint8Array(h * (1 + stride));
+  for (let y = 0; y < h; y++) { const o = y * (1 + stride); raw[o] = 0; raw.set(rgba.subarray(y * stride, (y + 1) * stride), o + 1); }
+  const idat = ff.zlibSync(raw, { level: 6 });
+  const ihdr = new Uint8Array(13), dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, w); dv.setUint32(4, h);
+  ihdr[8] = 8;   // bit depth
+  ihdr[9] = 6;   // colour type RGBA
+  ihdr[10] = 0;  // compression (deflate)
+  ihdr[11] = 0;  // filter method
+  ihdr[12] = 0;  // no interlace
+  const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const parts = [sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', new Uint8Array(0))];
+  let total = 0; for (const p of parts) total += p.length;
+  const out = new Uint8Array(total); let off = 0; for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
+
+
+// ===== js/title.js =====
+// Title compositor — renders titleText onto a Canvas2D and composites it over the matte per
+// knockoutMode (knockout / plate / ink), for BOTH the export RGBA buffer and the preview overlay.
+// All identifiers tl-prefixed (one-scope build safety). The title shows only during the held LOOP.
+
+function tlScratch(W, H) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(W, H);
+  const c = document.createElement('canvas'); c.width = W; c.height = H; return c;
+}
+function tlFont(p, H) {
+  const w = p.titleFont === 'SoraBold' ? '800' : '700';
+  const px = Math.max(10, Math.round(H * (p.titleScale || 0.3)));
+  return { font: `${w} ${px}px 'Sora', system-ui, sans-serif`, px };
+}
+function tlRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+// title visible only in the held loop (after intro reveal, before outro), and only if enabled
+function tlVisible(p, t) {
+  if (!p.titleShow) return false;
+  const i = p.introDur || 1.83, l = p.loopDur || 1.73, o = p.outroDur || 1.43, tot = i + l + o;
+  return t >= i / tot - 0.02 && t <= (i + l) / tot + 0.02;
+}
+
+// composite the title onto an {px, W, H} straight-alpha RGBA buffer (export path). Mutates px.
+function tlCompositeBuffer(buf, p, pal, t) {
+  if (!tlVisible(p, t)) return buf;
+  const { px, W, H } = buf;
+  const cv = tlScratch(W, H), ctx = cv.getContext('2d');
+  const text = (p.titleText || 'PSG').toString();
+  const { font } = tlFont(p, H);
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const cx = W / 2, cy = H / 2, mode = p.knockoutMode || 'knockout';
+  if (mode === 'plate') {
+    const ac = (pal.accent && pal.accent.rgb) || [254, 0, 137];
+    const m = ctx.measureText(text), w = m.width * 1.36, h = (p.titleScale || 0.3) * H * 1.4;
+    ctx.fillStyle = `rgb(${ac[0]},${ac[1]},${ac[2]})`; tlRoundRect(ctx, cx - w / 2, cy - h / 2, w, h, h * 0.18); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(text, cx, cy);
+  } else { ctx.fillStyle = mode === 'ink' ? '#0a0a0a' : '#fff'; ctx.fillText(text, cx, cy); }
+  const g = ctx.getImageData(0, 0, W, H).data;
+  const knock = mode === 'knockout';
+  for (let i = 0; i < px.length; i += 4) {
+    const ga = g[i + 3]; if (!ga) continue;
+    if (knock) { px[i + 3] = Math.round(px[i + 3] * (1 - ga / 255)); }   // punch transparent letters
+    else { const a = ga / 255, ia = 1 - a;
+      px[i] = Math.round(g[i] * a + px[i] * ia); px[i + 1] = Math.round(g[i + 1] * a + px[i + 1] * ia);
+      px[i + 2] = Math.round(g[i + 2] * a + px[i + 2] * ia); px[i + 3] = Math.max(px[i + 3], ga); }
+  }
+  return buf;
+}
+
+// paint the title onto a preview overlay 2D ctx (CSS-stacked over #stage)
+function tlPaintOverlay(octx, W, H, p, pal, t) {
+  octx.clearRect(0, 0, W, H);
+  if (!tlVisible(p, t)) return;
+  const text = (p.titleText || 'PSG').toString();
+  octx.font = tlFont(p, H).font; octx.textAlign = 'center'; octx.textBaseline = 'middle';
+  const cx = W / 2, cy = H / 2, mode = p.knockoutMode || 'knockout';
+  if (mode === 'plate') {
+    const ac = (pal.accent && pal.accent.rgb) || [254, 0, 137];
+    const m = octx.measureText(text), w = m.width * 1.36, h = (p.titleScale || 0.3) * H * 1.4;
+    octx.fillStyle = `rgb(${ac[0]},${ac[1]},${ac[2]})`; tlRoundRect(octx, cx - w / 2, cy - h / 2, w, h, h * 0.18); octx.fill();
+    octx.fillStyle = '#fff';
+  } else if (mode === 'ink') octx.fillStyle = '#0a0a0a';
+  else { octx.fillStyle = '#fff'; octx.strokeStyle = 'rgba(0,0,0,.35)'; octx.lineWidth = Math.max(1, H * 0.004); octx.strokeText(text, cx, cy); }
+  octx.fillText(text, cx, cy);
+}
+
+
+// ===== js/exporter.js =====
+// Alpha export — render each frame at full res, gl.readPixels straight alpha, encodePNG (lossless),
+// fflate.zipSync (store) + manifest.json. The alpha self-check GATES every export. Global `fflate`.
+
+const totalDur = s => { const p = s.params; return (p.introDur || 1.83) + (p.loopDur || 1.73) + (p.outroDur || 1.43); };
+// a t mid-way through the intro reveal — where the matte has BOTH transparent and opaque pixels
+const gateT = s => ((s.params.introDur || 1.83) * 0.5) / totalDur(s);
+const stripPriv = p => { const o = {}; for (const k in p) if (!k.startsWith('_')) o[k] = p[k]; return o; };
+const strU8 = s => (typeof fflate !== 'undefined' && fflate.strToU8) ? fflate.strToU8(s) : new TextEncoder().encode(s);
+
+async function exportSequence(app, opts = {}, onProgress) {
+  const engine = app.engine, state = app.state;
+  const W = opts.width || 1920, H = opts.height || 1080, fps = opts.fps || 30;
+  const frames = opts.frames || Math.max(1, Math.round((opts.durationSec || totalDur(state)) * fps));
+  const wasPlaying = app.playing; app.playing = false;
+  const cv = engine.canvas, cw = cv.width, ch = cv.height;
+  cv.width = W; cv.height = H;
+  try {
+    const chk = engine.alphaSelfCheck(state, gateT(state));          // GATE
+    if (!chk.ok && !opts.force) throw new Error(`alpha self-check failed (minα ${chk.minA}, maxα ${chk.maxA}); not a valid matte`);
+
+    const files = {};
+    for (let i = 0; i < frames; i++) {
+      engine.drawFrame(state, i / frames);
+      const buf = engine.readRGBA();
+      tlCompositeBuffer(buf, state.params, state.palette, i / frames);    // burn the title into the matte
+      files[`frame_${String(i).padStart(5, '0')}.png`] = encodePNG(buf.px, W, H);
+      if (onProgress) onProgress((i + 1) / frames, i + 1, frames);
+      if (opts.yield && (i & 3) === 3) await new Promise(r => setTimeout(r, 0)); // keep the UI responsive
+    }
+    const manifest = {
+      schemaVersion: 1, width: W, height: H, fps, frames, durationSec: frames / fps,
+      alpha: true, tiling: null, seed: state.seed, familyKey: state.familyKey,
+      params: stripPriv(state.params),
+    };
+    files['manifest.json'] = strU8(JSON.stringify(manifest, null, 2));
+    const zip = fflate.zipSync(files, { level: 0 });                 // PNGs already compressed → store
+    return { zip, manifest, frames };
+  } finally {
+    cv.width = cw; cv.height = ch; app.playing = wasPlaying;
+  }
+}
+
+// browser download helper (used by the export dialog in Phase 5)
+function downloadZip(zip, name = 'psg-frames.zip') {
+  const blob = new Blob([zip], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+
+// ===== js/ui.js =====
+// PSG UI — builds the transport, the hero-Randomize panel, the auto-generated 3-knob control bank
+// (one renderer per param type), the oklch.com-style colour panel, and the export dialog. Vanilla DOM.
+
+// tiny DOM helper
+function el(tag, attrs = {}, kids = []) {
+  const e = document.createElement(tag);
+  for (const k in attrs) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k === 'text') e.textContent = attrs[k];
+    else if (k === 'html') e.innerHTML = attrs[k];           // only ever fed literal markup, never user text
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  }
+  for (const c of [].concat(kids)) if (c != null) e.append(c);
+  return e;
+}
+const fmt = (v, p) => typeof v === 'number' ? (Math.abs(v) >= 100 || Number.isInteger(v) ? v.toFixed(0) : v.toFixed(p && p.step < 0.05 ? 2 : 2)) : v;
+const GROUP_ORDER = ['structure', 'element', 'palette', 'motion', 'effects', 'title', 'timing'];
+const GROUP_LABEL = { structure: 'Structure / reveal', element: 'Element', palette: 'Palette', motion: 'Motion', effects: 'Effects', title: 'Title / fonts', timing: 'Timing' };
+
+// ---------- ONE selectable-button interaction model ----------
+// single click = set current · double-click OR long-press (≥450ms) = toggle randomize-eligibility (dotted).
+// opts: { options, get():cur, set(v), inRand(v):bool, toggleRand(v), onChange?() }. .on = current, .rand = dotted.
+function psgSelectableBtn(opts) {
+  const row = el('div', { class: 'chiprow' });
+  const sync = () => [...row.children].forEach(b => { b.classList.toggle('on', opts.get() === b._val); b.classList.toggle('rand', !!opts.inRand(b._val)); });
+  for (const o of opts.options) {
+    const val = (o && o.val !== undefined) ? o.val : o;
+    const b = el('button', { type: 'button', text: (o && o.label) || String(val), title: 'click: set · double-click or hold: toggle Randomize-eligibility' });
+    b._val = val;
+    let timer = 0, clickT = 0, longed = false;
+    const toggle = () => { opts.toggleRand(val); sync(); opts.onChange && opts.onChange(); };
+    const setIt = () => { opts.set(val); sync(); opts.onChange && opts.onChange(); };
+    // defer the single click so a 2nd click (dblclick) or a long-press can cancel it — set never co-fires with toggle
+    b.addEventListener('click', () => { if (longed) { longed = false; return; } clearTimeout(clickT); clickT = setTimeout(setIt, 230); });
+    b.addEventListener('dblclick', e => { e.preventDefault(); clearTimeout(clickT); toggle(); });
+    b.addEventListener('pointerdown', () => { longed = false; timer = setTimeout(() => { longed = true; clearTimeout(clickT); toggle(); }, 450); });
+    const cancel = () => clearTimeout(timer);
+    b.addEventListener('pointerup', cancel); b.addEventListener('pointerleave', cancel);
+    row.append(b);
+  }
+  sync();
+  return row;
+}
+
+function buildUI(app) {
+  const ui = { showRanges: false };
+  buildTransport(app, ui);
+  buildHead(app, ui);
+  buildBody(app, ui);
+  buildDialog(app, ui);
+  // live colour-change hook: repaint the Randomize gradient + the role swatches without a full re-render
+  app.onColorChange = () => { const r = document.getElementById('randomize'); if (r) paintRandomizeGradient(r, app); updateColorSwatches(app); };
+  app.onParamChange = (k) => { if ((k === 'introDur' || k === 'loopDur' || k === 'outroDur') && ui.layoutScrubMarks) ui.layoutScrubMarks(); };
+  // keep the scrubber synced to the playhead
+  app.onFrame = (t) => { if (ui.scrub && document.activeElement !== ui.scrub) ui.scrub.value = String(Math.round(t * app.N)); };
+}
+function updateColorSwatches(app) {
+  const pal = app.state.palette, a = app.state.params.colorAlpha;
+  const cols = [pal.anchor, pal.dark, pal.light, pal.gradient, pal.accent, pal.groundStops[0]];
+  document.querySelectorAll('.colpanel .swatchstrip .sw').forEach((sw, i) => { if (cols[i]) sw.style.cssText = cskSwatchBg(cols[i], a); });
+}
+
+// ---------- transport ----------
+function buildTransport(app, ui) {
+  const tp = document.getElementById('transport'); tp.innerHTML = '';
+  const playBtn = el('button', { class: 't on', title: 'Play/Pause', text: '⏸', onclick: () => { app.playing ? app.pause() : app.play(); } });
+  app.onPlayState = () => { playBtn.textContent = app.playing ? '⏸' : '▶'; playBtn.classList.toggle('on', app.playing); };   // single source of truth for the play icon
+  const stopBtn = el('button', { class: 't', title: 'Reset', text: '⏹', onclick: () => app.seek(0) });
+  const loopBtn = el('button', { class: 't' + (app.loop ? ' on' : ''), title: 'Loop playback', text: '⟳', onclick: () => { app.loop = !app.loop; loopBtn.classList.toggle('on', app.loop); if (app.loop && !app.playing) app.play(); } });
+  // scrub with intro/loop/outro boundary markers + hover thumbnail preview
+  const scrubWrap = el('div', { class: 'scrubwrap' });
+  const scrub = el('input', { type: 'range', min: 0, max: app.N - 1, value: 0, id: 'scrub', oninput: e => app.seek(+e.target.value / app.N) });
+  const marks = el('div', { class: 'scrubmarks' });
+  const preview = el('div', { class: 'scrubprev' }, [el('canvas', { width: 128, height: 72 }), el('span', { class: 'pt' })]);
+  const thumb = preview.firstChild;
+  scrubWrap.append(scrub, marks, preview);
+  ui.scrub = scrub;
+  const layoutMarks = () => { marks.innerHTML = ''; for (const t of app.boundaries()) marks.append(el('div', { class: 'scrubmark', style: 'left:' + (t * 100).toFixed(2) + '%' })); };
+  layoutMarks(); ui.layoutScrubMarks = layoutMarks;
+  let raf = 0;
+  scrub.addEventListener('pointermove', e => {
+    const r = scrub.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    preview.style.left = (f * 100).toFixed(2) + '%'; preview.classList.add('show');
+    preview.querySelector('.pt').textContent = (f * (app.state.params.introDur + app.state.params.loopDur + app.state.params.outroDur)).toFixed(2) + 's';
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; app.thumbAt(f, thumb); });
+  });
+  scrub.addEventListener('pointerleave', () => preview.classList.remove('show'));
+  const speed = el('select', { class: 'mini', onchange: e => app.speed = +e.target.value });
+  for (const s of [0.25, 0.5, 1, 1.5, 2, 3]) speed.append(el('option', { value: s, text: s + '×', selected: s === 1 ? '' : null }));
+  const seg = el('div', { class: 'seg' });
+  ['Intro', 'Loop', 'Outro', 'Full'].forEach((s, i) => {
+    const b = el('button', { class: i === 3 ? 'on' : '', text: s, onclick: () => { [...seg.children].forEach(c => c.classList.remove('on')); b.classList.add('on'); app.stage = s.toLowerCase(); app.play(); playBtn.textContent = '⏸'; playBtn.classList.add('on'); } });
+    seg.append(b);
+  });
+  tp.append(playBtn, stopBtn, loopBtn, scrubWrap, seg, speed);
+}
+
+// ---------- panel head (Randomize / Export / family / seed) ----------
+function buildHead(app, ui) {
+  const head = document.getElementById('panelHead'); head.innerHTML = '';
+  const rnd = el('button', { id: 'randomize', text: 'RANDOMIZE', onclick: () => { app.roll(); refreshAll(app, ui); paintRandomizeGradient(rnd, app); } });
+  const row = el('div', { class: 'row2' }, [el('button', { id: 'exportBtn', text: '⬇ Export', onclick: () => ui.dialog.showModal() })]);
+  const selrow = familyGallery(app, ui);
+  const seedIn = el('input', {
+    id: 'seedfield', class: 'seedfield', value: app.state.seed, spellcheck: 'false', title: 'seed — click to copy, edit + Enter to reproduce',
+    onfocus: e => e.target.select(),                 // one click selects all → easy copy AND easy replace
+    onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
+    onchange: e => { const s = e.target.value.trim(); if (s && s !== app.state.seed) { app.roll({ seed: s }); refreshAll(app, ui); } },
+  });
+  ui.seedfield = seedIn;
+  const util = el('div', { class: 'headutil' }, [
+    el('label', { class: 'toggle' }, [el('input', { type: 'checkbox', onchange: e => { ui.showRanges = e.target.checked; refreshBody(app, ui); } }), el('span', { text: 'show ranges' })]),
+    el('span', { class: 'seedlbl', text: 'seed' }), seedIn,
+  ]);
+  head.append(rnd, row, selrow, util);
+  paintRandomizeGradient(rnd, app);
+}
+function familyGallery(app, ui) {
+  const row = psgSelectableBtn({
+    options: Object.keys(FAMILIES).map(k => ({ val: k, label: FAMILIES[k].label })),
+    get: () => app.state.familyKey,
+    set: k => { if (app.state.famRand.size && !app.state.famRand.has(k)) app.state.famRand = new Set([k]); app.setFamily(k); refreshAll(app, ui); },
+    inRand: k => app.state.famRand && app.state.famRand.has(k),
+    toggleRand: k => { app.state.famRand.has(k) ? app.state.famRand.delete(k) : app.state.famRand.add(k); },
+  });
+  row.classList.add('famgallery');
+  ui.famGallery = row; return row;
+}
+function paintRandomizeGradient(btn, app) {
+  const p = app.state.palette;
+  if (p && p.anchor && p.accent) {
+    btn.style.background = `linear-gradient(95deg, ${p.anchor.hex}, ${p.accent.hex})`;
+    document.documentElement.style.setProperty('--accent', p.accent.hex);   // control accents follow the palette pop
+  }
+}
+
+// ---------- control bank ----------
+function buildBody(app, ui) { const body = document.getElementById('panelBody'); body.innerHTML = ''; ui.body = body; refreshBody(app, ui); }
+function refreshBody(app, ui) {
+  const body = ui.body;
+  (ui._curveEls || []).forEach(e => e._cvDispose && e._cvDispose()); ui._curveEls = [];   // stop old rAF loops
+  ui._layouts = []; app._cskGamutPaint = [];                                                // drop stale closures over detached canvases
+  body.innerHTML = '';
+  const rows = app.rows();
+  const groups = {};
+  for (const r of rows) (groups[r.group] ||= []).push(r);
+  const order = [...GROUP_ORDER.filter(g => groups[g]), ...Object.keys(groups).filter(g => !GROUP_ORDER.includes(g))];
+  for (const g of order) {
+    const det = el('details', { class: 'grp', open: (g === 'palette' || g === 'structure') ? '' : null });
+    det.append(el('summary', {}, [el('span', { class: 'caret', text: '▸' }), el('span', { text: GROUP_LABEL[g] || g })]));
+    if (g === 'palette') det.append(colorPanel(app, ui));
+    for (const r of groups[g]) if (!(g === 'palette' && r.colorRole)) det.append(widget(app, ui, r));   // colorPanel owns the colour-role rows
+    body.append(det);
+  }
+}
+
+// ---------- per-type widgets ----------
+function widget(app, ui, p) {
+  if (p.type === 'scalar' || p.type === 'int' || p.type === 'angle' || p.type === 'hue') return knob3Row(app, ui, p);
+  if (p.type === 'enum') return enumRow(app, ui, p);
+  if (p.type === 'bool') return boolRow(app, ui, p);
+  if (p.type === 'curve') return curveRow(app, ui, p);
+  if (p.type === 'colorAxis') return knob3Row(app, ui, p);
+  if (p.type === 'text') return textRow(app, ui, p);
+  return staticRow(p.label, String(app.state.params[p.key]));
+}
+function staticRow(label, val) { return el('div', { class: 'prow' }, [el('span', { class: 'plabel', text: label }), el('span', { class: 'pval', text: val })]); }
+function textRow(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  row.append(el('span', { class: 'plabel', text: p.label }));
+  row.append(el('div', { class: 'slot' }, [el('input', { class: 'textfield', value: app.state.params[p.key] || '', spellcheck: 'false', oninput: e => app.setParam(p.key, e.target.value) })]));
+  return row;
+}
+function curveRow(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  const ed = curveEditor(() => app.state.params[p.key], v => app.setParam(p.key, v), { role: p.key === 'loopOsc' ? 'oscillator' : 'reveal', band: p });
+  (ui._curveEls ||= []).push(ed);
+  row.append(el('span', { class: 'plabel', text: p.label }), el('span', { class: 'pval', text: 'curve' }));
+  row.append(el('div', { class: 'slot' }, [ed]));
+  return row;
+}
+function knob3Row(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  const valEl = el('span', { class: 'pval', text: fmt(app.state.params[p.key], p) + (p.unit || '') });
+  row.append(el('span', { class: 'plabel', text: p.label }), valEl);
+  const slot = el('div', { class: 'slot' });
+  const k = el('div', { class: 'knob3' + (ui.showRanges ? '' : ' noband') });
+  const track = el('div', { class: 'track' }), band = el('div', { class: 'band' });
+  const hLo = el('div', { class: 'h bnd' }), hHi = el('div', { class: 'h bnd' }), hCur = el('div', { class: 'h cur' });
+  k.append(track, band, hLo, hHi, hCur); slot.append(k); row.append(slot);
+  const lo = p.full.min, hi = p.full.max, norm = v => (v - lo) / (hi - lo || 1);
+  const layout = () => {
+    const c = clmp(app.state.params[p.key], lo, hi);
+    hCur.style.left = norm(c) * 100 + '%';
+    hLo.style.left = norm(p.band.randMin) * 100 + '%';
+    hHi.style.left = norm(p.band.randMax) * 100 + '%';
+    band.style.left = norm(p.band.randMin) * 100 + '%';
+    band.style.width = (norm(p.band.randMax) - norm(p.band.randMin)) * 100 + '%';
+    valEl.textContent = fmt(app.state.params[p.key], p) + (p.unit || '');
+  };
+  const drag = (handle, get, set) => {
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); handle.setPointerCapture(e.pointerId); handle.style.cursor = 'grabbing';
+      const move = ev => { const r = k.getBoundingClientRect(); let v = lo + ((ev.clientX - r.left) / r.width) * (hi - lo); v = clmp(snp(v, p), lo, hi); set(v); layout(); };
+      const up = () => { handle.releasePointerCapture(e.pointerId); handle.style.cursor = 'grab'; handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
+      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); move(e);
+    });
+  };
+  drag(hCur, () => app.state.params[p.key], v => app.setParam(p.key, v));
+  drag(hLo, () => p.band.randMin, v => { p.band.randMin = Math.min(v, p.band.randMax); if (app.state.params[p.key] < v) app.setParam(p.key, v); });
+  drag(hHi, () => p.band.randMax, v => { p.band.randMax = Math.max(v, p.band.randMin); if (app.state.params[p.key] > v) app.setParam(p.key, v); });
+  layout();
+  ui._layouts.push(layout);
+  return row;
+}
+function enumRow(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  row.append(el('span', { class: 'plabel', text: p.label }));
+  row.append(psgSelectableBtn({
+    options: p.options || [],
+    get: () => app.state.params[p.key],
+    set: v => app.setParam(p.key, v),
+    inRand: v => (p.randSet || []).includes(v),
+    toggleRand: v => { p.randSet = (p.randSet || []).includes(v) ? p.randSet.filter(o => o !== v) : [...(p.randSet || []), v]; },
+  }));
+  return row;
+}
+// bool = ONE always-visible tristate. Off|On = fixed value (survives Randomize); Either = randomize-eligible.
+function boolRow(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  row.append(el('span', { class: 'plabel', text: p.label }), el('span', { class: 'pval', text: app.state.params[p.key] ? 'on' : 'off' }));
+  const ts = el('div', { class: 'tristate' });
+  const states = [['off', 'Off', false], ['either', 'Either', null], ['on', 'On', true]];
+  const cur = () => p.boolPolicy === 'either' ? 'either' : (app.state.params[p.key] ? 'on' : 'off');
+  const sync = () => [...ts.children].forEach((b, i) => b.classList.toggle('on', states[i][0] === cur()));
+  for (const [pol, lbl, val] of states)
+    ts.append(el('button', { type: 'button', text: lbl, onclick: () => { p.boolPolicy = pol; if (val !== null) app.setParam(p.key, val); sync(); } }));
+  sync();
+  row.append(el('div', { class: 'slot' }, [ts]));
+  return row;
+}
+
+// ---------- colour panel (oklch.com-style) ----------
+function colorPanel(app, ui) {
+  const wrap = el('div', { class: 'colpanel' });
+
+  // SCHEMES {mono, colourful, full-range} — real presets; same click/dblclick model as every other button
+  const schemeRow = psgSelectableBtn({
+    options: [{ val: 'mono', label: 'Mono' }, { val: 'colourful', label: 'Colourful' }, { val: 'full-range', label: 'Full range' }],
+    get: () => app.state.scheme,
+    set: k => { if (app.state.schemeRand.size && !app.state.schemeRand.has(k)) app.state.schemeRand = new Set([k]); app.state.scheme = k; cskApplyScheme(app, k); app.reassemble(); app.refresh(); refreshBody(app, ui); },
+    inRand: k => app.state.schemeRand && app.state.schemeRand.has(k),
+    toggleRand: k => { app.state.schemeRand.has(k) ? app.state.schemeRand.delete(k) : app.state.schemeRand.add(k); },
+  });
+  schemeRow.classList.add('scheme');
+  wrap.append(el('div', { class: 'collabel', text: 'Scheme' }), schemeRow);
+
+  const byKey = {}; for (const r of app.rows()) byKey[r.key] = r;
+  const base = { H: app.state.params.anchorHue, dL: app.state.params.anchorDL, chromaF: app.state.params.anchorChromaF };
+  const pal = app.state.palette, a = app.state.params.colorAlpha;
+
+  // SWATCH STRIP (alpha-aware) → click a role to expand its settings
+  const swroles = [['base', 'Base', pal.anchor], ['sibling', 'Dark', pal.dark], ['siblingLight', 'Light', pal.light],
+    ['gradient', 'Partner', pal.gradient], ['accent', 'Accent', pal.accent], ['ground', 'Ground', pal.groundStops[0]]];
+  const strip = el('div', { class: 'swatchstrip' });
+  for (const [role, lbl, c] of swroles)
+    strip.append(el('div', { class: 'sw' + (ui._colExpanded === role ? ' sel' : ''), style: cskSwatchBg(c, a), title: c ? c.hex : '',
+      onclick: () => { ui._colExpanded = ui._colExpanded === role ? null : role; refreshBody(app, ui); } }, [el('span', { class: 'role', text: lbl })]));
+  wrap.append(strip);
+  wrap.append(cskReadout(app, ui));
+
+  // visualisations: 2-D L–C pad + 3-D gamut mini
+  wrap.append(cskPad(app, ui));
+  wrap.append(cskGamut3D(app));
+
+  // BASE block — coloured axis sliders (H / L / C / alpha)
+  const baseBlock = el('div', { class: 'roleblock open' });
+  baseBlock.append(psgRoleHeader(ui, 'base', 'Base colour', null));
+  for (const key of ['anchorHue', 'anchorDL', 'anchorChromaF', 'colorAlpha']) if (byKey[key]) baseBlock.append(cskAxisRow(app, ui, byKey[key]));
+  wrap.append(baseBlock);
+
+  // DERIVED roles — header = role name, row label = what it changes
+  const derived = [['sibling', 'Siblings', ['siblingSpread']], ['gradient', 'Gradient partners', ['gradientTemplate']],
+    ['accent', 'Accent partners', ['accentTemplate', 'accentTension']], ['ground', 'Ground', ['groundHue', 'groundDark']]];
+  for (const [role, lbl, keys] of derived) {
+    const open = ui._colExpanded === role || (role === 'sibling' && ui._colExpanded === 'siblingLight');   // Light swatch opens the Siblings block too
+    const block = el('div', { class: 'roleblock' + (open ? ' open' : '') });
+    block.append(psgRoleHeader(ui, role, lbl, () => { ui._colExpanded = open ? null : role; refreshBody(app, ui); }));
+    if (open) for (const key of keys) if (byKey[key]) block.append(widget(app, ui, byKey[key]));
+    wrap.append(block);
+  }
+  ui.colorPanel = wrap; return wrap;
+}
+function psgRoleHeader(ui, role, lbl, onToggle) {
+  return el('div', { class: 'rolehdr', onclick: onToggle || null }, [
+    onToggle ? el('span', { class: 'caret', text: ui._colExpanded === role ? '▾' : '▸' }) : null,
+    el('span', { class: 'rolename', text: lbl })]);
+}
+
+// alpha-aware swatch background: colour over a CSS checker when α<1 (composites within frame, §B.4)
+function cskSwatchBg(c, alpha = 1) {
+  const hexc = c ? c.hex : '#000';
+  if (alpha == null || alpha >= 0.999) return 'background:' + hexc;
+  const r = parseInt(hexc.slice(1, 3), 16), g = parseInt(hexc.slice(3, 5), 16), b = parseInt(hexc.slice(5, 7), 16);
+  const over = `rgba(${r},${g},${b},${alpha})`;
+  return `background:linear-gradient(${over},${over}),conic-gradient(#888 25%,#bbb 0 50%,#888 0 75%,#bbb 0);background-size:cover,10px 10px`;
+}
+
+// coloured axis slider: native range over a canvas-painted manifold track
+function cskAxisRow(app, ui, p) {
+  const row = el('div', { class: 'prow' });
+  const isAlpha = p.key === 'colorAlpha';
+  const valEl = el('span', { class: 'pval', text: cskAxisVal(app, p) });
+  row.append(el('span', { class: 'plabel', text: p.label }), valEl);
+  const slot = el('div', { class: 'slot' });
+  const wrapb = el('div', { class: 'axisbar' });
+  const cv = el('canvas', { class: 'axiscanvas' });
+  const input = el('input', { type: 'range', class: 'axisrange', min: p.full.min, max: p.full.max, step: p.step, value: app.state.params[p.key] });
+  wrapb.append(cv, input); slot.append(wrapb); row.append(slot);
+  const paint = () => cskPaintTrack(cv, app, p, isAlpha, ui);
+  input.addEventListener('input', e => { app.setParam(p.key, +e.target.value); valEl.textContent = cskAxisVal(app, p); cskRepaintColourUI(app, ui); });
+  requestAnimationFrame(paint);
+  ui._layouts.push(() => { input.value = app.state.params[p.key]; valEl.textContent = cskAxisVal(app, p); paint(); });
+  return row;
+}
+const cskAxisVal = (app, p) => p.key === 'colorAlpha' ? Math.round(app.state.params[p.key] * 100) + '%'
+  : p.key === 'anchorDL' ? 'L ' + Math.max(0.02, Math.min(0.99, naturalL(app.state.params.anchorHue) + app.state.params[p.key])).toFixed(2)
+  : fmt(app.state.params[p.key], p) + (p.unit || '');
+function cskPaintTrack(cv, app, p, isAlpha, ui) {
+  const w = cv.clientWidth || 280, h = cv.clientHeight || 14, dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr);
+  const base = { H: app.state.params.anchorHue, dL: app.state.params.anchorDL, chromaF: app.state.params.anchorChromaF };
+  if (isAlpha) {
+    g.fillStyle = cskCheckerPattern(g); g.fillRect(0, 0, w, h);
+    const c = app.state.palette.anchor.hex, r = parseInt(c.slice(1, 3), 16), gg = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+    const grad = g.createLinearGradient(0, 0, w, 0); grad.addColorStop(0, `rgba(${r},${gg},${b},0)`); grad.addColorStop(1, `rgba(${r},${gg},${b},1)`);
+    g.fillStyle = grad; g.fillRect(0, 0, w, h); return;
+  }
+  const axis = p.key === 'anchorHue' ? 'hue' : p.key === 'anchorDL' ? 'value' : 'chroma';
+  const n = Math.max(24, Math.min(96, Math.round(w / 4))), s = cskAxisSamples(axis, base, n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / n) * w, bw = w / n + 1, c = s[i];
+    if (c.inGamut) { g.fillStyle = c.hex; g.fillRect(x, 0, bw, h); }
+    else { g.fillStyle = '#1a1a22'; g.fillRect(x, 0, bw, h); cskHatch(g, x, bw, h); }
+  }
+  if (ui && ui.showRanges && p.band) {                 // randomize-band ticks (consistent with the 3-knob band)
+    const fmin = p.full.min, fspan = (p.full.max - fmin) || 1;
+    g.fillStyle = 'rgba(255,255,255,.92)';
+    for (const v of [p.band.randMin, p.band.randMax]) g.fillRect(((v - fmin) / fspan) * w - 1, 0, 2, h);
+  }
+}
+function cskHatch(g, x, w, h) { g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; for (let o = -h; o < w + h; o += 5) { g.beginPath(); g.moveTo(x + o, h); g.lineTo(x + o + h, 0); g.stroke(); } }
+let _cskChk; function cskCheckerPattern(g) { if (_cskChk) return _cskChk; const c = document.createElement('canvas'); c.width = c.height = 10; const x = c.getContext('2d'); x.fillStyle = '#9a9aa6'; x.fillRect(0, 0, 10, 10); x.fillStyle = '#5a5a66'; x.fillRect(0, 0, 5, 5); x.fillRect(5, 5, 5, 5); return _cskChk = g.createPattern(c, 'repeat'); }
+
+// 2-D pad: L (vertical) × chroma-fraction (horizontal) at current hue — sets anchorDL + anchorChromaF together
+function cskPad(app, ui) {
+  const pad = el('div', { class: 'cpad' });
+  const cv = el('canvas'); const dot = el('div', { class: 'dot' }); pad.append(cv, dot);
+  const paint = () => {
+    const w = cv.clientWidth || 280, h = cv.clientHeight || 150, dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr);
+    const grid = cskSliceGrid(app.state.params.anchorHue, 40, 28), cw = w / grid.cols, ch = h / grid.rows;
+    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++) {
+      const cell = grid.cell[r * grid.cols + c];
+      g.fillStyle = cell.inGamut ? cell.hex : '#12121a'; g.fillRect(c * cw, r * ch, cw + 1, ch + 1);
+    }
+    const L = Math.max(0.02, Math.min(0.99, naturalL(app.state.params.anchorHue) + app.state.params.anchorDL));
+    dot.style.left = app.state.params.anchorChromaF * 100 + '%';
+    dot.style.top = ((0.99 - L) / 0.97) * 100 + '%';
+  };
+  const set = ev => {
+    const r = cv.getBoundingClientRect();
+    const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), fy = Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
+    const L = 0.99 - fy * 0.97;
+    app.setParam('anchorChromaF', +fx.toFixed(2));
+    app.setParam('anchorDL', +(L - naturalL(app.state.params.anchorHue)).toFixed(3));
+    cskRepaintColourUI(app, ui);
+  };
+  pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); set(e); const m = ev => set(ev); const up = () => { pad.removeEventListener('pointermove', m); pad.removeEventListener('pointerup', up); }; pad.addEventListener('pointermove', m); pad.addEventListener('pointerup', up); });
+  requestAnimationFrame(paint); ui._layouts.push(paint);
+  return pad;
+}
+// 3-D gamut mini: static iso-projection of the hue ring + current point (ponytail: no rotation)
+function cskGamut3D(app) {
+  const box = el('div', { class: 'gamut3d' });
+  const cv = el('canvas'); box.append(cv);
+  const paint = () => {
+    const w = cv.clientWidth || 280, h = cv.clientHeight || 96, dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h * 0.6, rx = w * 0.34, ry = h * 0.22;
+    for (let d = 0; d < 72; d++) {
+      const H = d * 5, ang = (H - 90) * Math.PI / 180, L = naturalL(H), C = 0.9 * ceilC(L, H), { rgb, inGamut } = oklchToRgb(L, C, H);
+      g.fillStyle = inGamut ? hex(rgb) : '#222'; g.beginPath();
+      g.arc(cx + Math.cos(ang) * rx, cy + Math.sin(ang) * ry - (L - 0.5) * h * 0.5, 2.4, 0, 7); g.fill();
+    }
+    const H = app.state.params.anchorHue, ang = (H - 90) * Math.PI / 180, L = Math.max(0.02, Math.min(0.99, naturalL(H) + app.state.params.anchorDL)), C = app.state.params.anchorChromaF;
+    const x = cx + Math.cos(ang) * rx * (0.2 + C * 0.8), y = cy + Math.sin(ang) * ry - (L - 0.5) * h * 0.5;
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 5, 0, 7); g.stroke();
+  };
+  requestAnimationFrame(paint); (app._cskGamutPaint ||= []).push(paint);
+  return box;
+}
+// readout field + format dropdown (hex / oklch / rgb / figma), copyable
+// colour for the currently-expanded role (readout follows the selected swatch)
+function cskRoleColour(app, ui) {
+  const p = app.state.palette;
+  return ({ base: p.anchor, sibling: p.dark, siblingLight: p.light, gradient: p.gradient, accent: p.accent, ground: p.groundStops[0] })[ui._colExpanded] || p.anchor;
+}
+function cskReadout(app, ui) {
+  const val = () => cskFormat(cskRoleColour(app, ui), app.state.params.colorAlpha, ui._codeFmt || 'hex');
+  const field = el('input', { class: 'cscode', readonly: '', value: val(),
+    onclick: e => { e.target.select(); navigator.clipboard && navigator.clipboard.writeText(e.target.value); } });
+  const fmtSel = el('select', { class: 'mini cscode-fmt', onchange: e => { ui._codeFmt = e.target.value; field.value = val(); } });
+  for (const f of ['hex', 'oklch', 'rgb', 'figma']) fmtSel.append(el('option', { value: f, text: f, selected: (ui._codeFmt || 'hex') === f ? '' : null }));
+  ui._codeField = field; ui._codeVal = val;
+  return el('div', { class: 'csreadout' }, [fmtSel, field]);
+}
+function cskFormat(c, a, f) {
+  const [r, g, b] = c.rgb, A = a < 1 ? ' / ' + Math.round(a * 100) + '%' : '';
+  if (f === 'oklch') return `oklch(${(c.L * 100).toFixed(1)}% ${c.C.toFixed(3)} ${c.H.toFixed(1)}${A})`;
+  if (f === 'rgb') return a < 1 ? `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
+  if (f === 'figma') return c.hex.replace('#', '') + (a < 1 ? ', ' + Math.round(a * 100) + '%' : '');
+  return c.hex + (a < 1 ? Math.round(a * 255).toString(16).padStart(2, '0').toUpperCase() : '');
+}
+// repaint just the colour visualisations after a colour edit (no refreshBody → no focus loss)
+function cskRepaintColourUI(app, ui) {
+  (app._cskGamutPaint || []).forEach(fn => fn());
+  (ui._layouts || []).forEach(fn => fn());          // hue change recolours the value/chroma tracks + pad
+  if (ui._codeField && ui._codeVal) ui._codeField.value = ui._codeVal();
+  updateColorSwatches(app);
+}
+// SCHEMES with real semantics {mono, colourful, full-range} — presets that rewrite the colour bands/values
+function cskApplyScheme(app, key) {
+  const rows = app.rows(), row = k => rows.find(r => r.key === k), set = (k, v) => { app.state.params[k] = v; };
+  if (key === 'mono') {                              // TRUE greyscale: chroma locked to 0
+    set('anchorChromaF', 0); const r = row('anchorChromaF'); if (r) { r.band.randMin = 0; r.band.randMax = 0; }
+    set('gradientTemplate', 'mono'); set('accentTemplate', 'analogous');
+  } else if (key === 'colourful') {                  // ride the manifold ceiling
+    set('anchorChromaF', 1.0); const r = row('anchorChromaF'); if (r) { r.band.randMin = 0.95; r.band.randMax = 1.0; }
+    set('gradientTemplate', 'analogous'); set('accentTemplate', 'splitComplement'); set('accentTension', 28);
+  } else if (key === 'full-range') {                 // open the WHOLE range on all 3 colour dims
+    for (const k of ['anchorHue', 'anchorDL', 'anchorChromaF']) { const r = row(k); if (r) { r.band.randMin = r.full.min; r.band.randMax = r.full.max; } }
+  }
+}
+
+// ---------- export dialog ----------
+function buildDialog(app, ui) {
+  const presets = { '1920×1080': [1920, 1080], '1280×720': [1280, 720], '3840×2160': [3840, 2160], '1080×1920': [1080, 1920], '1080×1080': [1080, 1080] };
+  const sizeSel = el('select', {}); for (const k in presets) sizeSel.append(el('option', { value: k, text: k }));
+  const fpsIn = el('input', { type: 'number', value: 30, min: 1, max: 60, style: 'width:70px' });
+  const fmtSel = el('select', {}, [el('option', { value: 'zip', text: 'PNG sequence (.zip) — lossless alpha' })]);
+  const bar = el('div', { class: 'bar' }, [el('div', {})]); const prog = bar.firstChild;
+  const status = el('div', { class: 'note', text: 'Renders every frame at full res with the alpha matte. Use the Python companion for ProRes/VP9-alpha.' });
+  const goBtn = el('button', { class: 'go', text: 'Export' });
+  const dlg = el('dialog', {}, [
+    el('div', { class: 'dlg-h' }, [el('span', { text: 'Export transition' }), el('button', { class: 'chip', text: '✕', onclick: () => dlg.close() })]),
+    el('div', { class: 'dlg-b' }, [
+      el('label', {}, [el('span', { text: 'Resolution' }), sizeSel]),
+      el('label', {}, [el('span', { text: 'FPS' }), fpsIn]),
+      el('label', {}, [el('span', { text: 'Format' }), fmtSel]),
+      bar, status,
+    ]),
+    el('div', { class: 'dlg-f' }, [el('button', { text: 'Close', onclick: () => dlg.close() }), goBtn]),
+  ]);
+  goBtn.addEventListener('click', async () => {
+    const [w, h] = presets[sizeSel.value]; goBtn.disabled = true; status.textContent = 'rendering…';
+    try {
+      const { zip, frames } = await app.exportSequence({ width: w, height: h, fps: +fpsIn.value, yield: true }, (f) => { prog.style.width = (f * 100).toFixed(0) + '%'; });
+      app.downloadZip(zip, `psg-${app.state.seed}.zip`); status.textContent = `done — ${frames} frames, ${(zip.length / 1048576).toFixed(1)} MB`;
+    } catch (e) { status.textContent = 'export failed: ' + e.message; }
+    goBtn.disabled = false;
+  });
+  document.body.append(dlg); ui.dialog = dlg;
+}
+
+// ---------- refresh helpers ----------
+function refreshAll(app, ui) {
+  refreshBody(app, ui);
+  if (ui.seedfield && document.activeElement !== ui.seedfield) ui.seedfield.value = app.state.seed;
+  if (ui.famGallery) [...ui.famGallery.children].forEach(b => b.classList.toggle('on', b._val === app.state.familyKey));
+  if (ui.layoutScrubMarks) ui.layoutScrubMarks();
+  const rnd = document.getElementById('randomize'); if (rnd) paintRandomizeGradient(rnd, app);
+}
+const clmp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function snp(v, p) { if (p.step) v = Math.round(v / p.step) * p.step; return +v.toFixed(6); }
+
+
+// ===== js/main.js =====
+// PSG app controller. Owns the state + preview loop (snapped i/N grid), exposes the methods the UI
+// and the headless harness drive (roll / seek / setParam / reassemble / export).
+
+const COLOR_KEYS = new Set(['anchorHue', 'anchorDL', 'anchorChromaF', 'siblingSpread',
+  'gradientTemplate', 'accentTemplate', 'accentTension', 'groundHue', 'groundDark', 'setCount']);
+
+function boot() {
+  const canvas = document.getElementById('stage');
+  let engine;
+  try { engine = createEngine(canvas); }
+  catch (e) { document.body.innerHTML = '<p style="padding:20px">WebGL2 error: ' + e.message + '</p>'; console.error(e); return; }
+  const overlay = document.createElement('canvas'); overlay.id = 'titleOverlay';
+  canvas.parentElement.append(overlay);
+  const octx = overlay.getContext('2d');
+
+  const app = {
+    engine, canvas, overlay, octx,
+    state: defaultState('waves'),
+    N: 120, fps: 30, speed: 1, playing: true, loop: true, curT: 0, stage: 'full', onFrame: null,
+    rows() { return this.state.rows; },
+    roll(opts = {}) {
+      const prevFamRand = this.state && this.state.famRand, prevSchemeRand = this.state && this.state.schemeRand, prevScheme = this.state && this.state.scheme;
+      const seed = opts.seed || ('psg-' + Math.floor(Math.random() * 1e9).toString(36));
+      this.state = rollTransition(seed, Object.assign({
+        family: opts.family,                                  // forced only on an explicit tile click; else picked from the dotted pool
+        famRand: prevFamRand && prevFamRand.size ? [...prevFamRand] : null,
+        prevPalette: this.state ? this.state.palette : null,
+        rows: this.state ? this.state.rows : null, rowsFamily: this.state ? this.state.familyKey : null,
+      }, opts));
+      this.state.famRand = prevFamRand; this.state.schemeRand = prevSchemeRand; this.state.scheme = prevScheme;   // carry UI-only eligibility sets
+      // a dotted scheme preset re-shapes the RESOLVED family's colour bands, then we re-sample the colour params so it takes effect
+      if (prevSchemeRand && prevSchemeRand.size) {
+        const sk = makeRng(seed + '-pick').pick([...prevSchemeRand]);
+        this.state.scheme = sk; cskApplyScheme(this, sk);
+        const crng = makeRng(seed + '-recolour');
+        for (const r of this.state.rows) if (r.group === 'palette') this.state.params[r.key] = sampleParam(r, crng);
+        this.reassemble();
+      }
+      this.refresh(); return this.state;
+    },
+    reassemble() { this.state.palette = assembleTransition(makeRng(this.state.seed), this.state.params); },
+    setParam(k, v) { this.state.params[k] = v; if (COLOR_KEYS.has(k)) { this.reassemble(); if (this.onColorChange) this.onColorChange(); } if (this.onParamChange) this.onParamChange(k); this.refresh(); },
+    setFamily(k) { this.roll({ family: k }); },
+    // tiny thumbnail of frame t for the scrub hover-preview (snapshot is synchronous after the draw, so no preserveDrawingBuffer needed)
+    thumbAt(t, thumbCanvas) {
+      const wasPlaying = this.playing; this.playing = false;
+      engine.drawFrame(this.state, t);
+      const g = thumbCanvas.getContext('2d'); g.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+      g.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+      this.playing = wasPlaying; if (!wasPlaying) { engine.drawFrame(this.state, this.curT); this.paintTitle(); }
+    },
+    boundaries() { const [, i] = STAGE_RANGE(this.state, 'intro'); const [, l] = STAGE_RANGE(this.state, 'loop'); return [i, l]; },   // intro-end, loop-end in t
+    sizeFor(stage) { return STAGE_RANGE(this.state, stage); },
+    play() { this.playing = true; if (this._ended) { this._acc = 0; this._ended = false; } if (this.onPlayState) this.onPlayState(); },
+    pause() { this.playing = false; if (this.onPlayState) this.onPlayState(); },
+    paintTitle() { tlPaintOverlay(octx, overlay.width, overlay.height, this.state.params, this.state.palette, this.curT); },
+    seek(t) { this.playing = false; this.curT = t; engine.drawFrame(this.state, t); this.paintTitle(); if (this.onFrame) this.onFrame(t); if (this.onPlayState) this.onPlayState(); },
+    renderAt(t) { this.playing = false; engine.drawFrame(this.state, t); },     // harness
+    refresh() { if (!this.playing) { engine.drawFrame(this.state, this.curT); this.paintTitle(); } },
+    exportSequence(opts, onP) { return exportSequence(this, opts, onP); },
+    downloadZip,
+  };
+  window.PSG = app;
+  app.state.famRand = new Set(Object.keys(FAMILIES));   // all families dotted = eligible by default
+  app.state.schemeRand = new Set(['colourful']);        // only 'colourful' randomize-eligible by default
+  app.state.scheme = 'colourful';                       // reflect the default-eligible preset in the scheme buttons
+
+  resizeCanvas(app);
+  window.addEventListener('resize', () => { resizeCanvas(app); app.refresh(); });
+
+  // preview loop — playhead advances by wall-clock*speed but the rendered t is ALWAYS snapped to i/N
+  let last = performance.now(), prevI = 0; app._acc = 0; app._ended = false;
+  function loop(now) {
+    const dt = now - last; last = now;
+    if (app.playing) {
+      const [lo, hi] = STAGE_RANGE(app.state, app.stage);
+      app._acc += dt * app.speed;
+      const span = Math.max(1, Math.round((hi - lo) * app.N));
+      let i = Math.floor((app._acc / 1000) * app.fps) % span;
+      if (!app.loop && i < prevI) { i = span - 1; app.playing = false; app._ended = true; if (app.onPlayState) app.onPlayState(); }   // play-once: hold the last frame
+      prevI = i;
+      app.curT = lo + i / app.N;
+      engine.drawFrame(app.state, app.curT);
+      app.paintTitle();
+      if (app.onFrame) app.onFrame(app.curT);
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  buildUI(app);
+}
+
+// stage sub-range [lo,hi] in t for Intro/Loop/Outro/Full (from durations)
+function STAGE_RANGE(state, stage) {
+  const p = state.params, i = p.introDur || 1.83, l = p.loopDur || 1.73, o = p.outroDur || 1.43, tot = i + l + o;
+  if (stage === 'intro') return [0, i / tot];
+  if (stage === 'loop') return [i / tot, (i + l) / tot];
+  if (stage === 'outro') return [(i + l) / tot, 1];
+  return [0, 1];
+}
+
+function resizeCanvas(app) {
+  const wrap = app.canvas.parentElement, r = wrap.getBoundingClientRect();
+  const aspect = 16 / 9;
+  let w = r.width, h = r.height;             // fill the stage; no inset margin (use all the space)
+  if (w / h > aspect) w = h * aspect; else h = w / aspect;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  app.canvas.style.width = Math.round(w) + 'px'; app.canvas.style.height = Math.round(h) + 'px';
+  app.canvas.width = Math.max(2, Math.round(w * dpr)); app.canvas.height = Math.max(2, Math.round(h * dpr));
+  if (app.overlay) { app.overlay.style.width = app.canvas.style.width; app.overlay.style.height = app.canvas.style.height; app.overlay.width = app.canvas.width; app.overlay.height = app.canvas.height; }
+}
+
+if (document.readyState !== 'loading') boot();
+else document.addEventListener('DOMContentLoaded', boot);
+
+</script>
+<script type="application/json" id="provenance">
+{ "name": "Phosphene Segue Generator", "short": "PSG", "schemaVersion": 1, "status": "working",
+  "families": ["waves", "gradientBars", "dots", "facet"],
+  "contract": "matte alpha is the output alpha; export = lossless straight-alpha RGBA PNG sequence + manifest.json",
+  "determinism": "same seed string -> same pixels (mulberry32+xmur3); preview snapped to the i/N export grid",
+  "build": "single self-contained file built from src/ by build.mjs",
+  "design": "docs/decisions-log.md + docs/*-design.md + docs/build-readiness.md" }
+</script>
+</html>
