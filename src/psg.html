@@ -1970,7 +1970,7 @@ void main(){ vec3 c = vCol; float w = 0.006, g = 0.62;
   const redraw = () => { if (!raf) raf = requestAnimationFrame(draw); };
   canvas.addEventListener('pointerdown', e => {
     e.preventDefault(); canvas.setPointerCapture(e.pointerId); let px = e.clientX, py = e.clientY;
-    const mv = ev => { yaw -= (ev.clientX - px) * 0.01; pitch = Math.max(-1.45, Math.min(1.45, pitch + (ev.clientY - py) * 0.01)); px = ev.clientX; py = ev.clientY; redraw(); };
+    const mv = ev => { yaw += (ev.clientX - px) * 0.01; pitch = Math.max(-1.45, Math.min(1.45, pitch + (ev.clientY - py) * 0.01)); px = ev.clientX; py = ev.clientY; redraw(); };
     const up = () => { canvas.removeEventListener('pointermove', mv); canvas.removeEventListener('pointerup', up); };
     canvas.addEventListener('pointermove', mv); canvas.addEventListener('pointerup', up);
   });
