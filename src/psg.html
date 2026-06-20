@@ -105,11 +105,15 @@ details.grp[open]>summary .caret{transform:rotate(90deg)}
 .swatchstrip .sw{flex:1;height:30px;border-radius:6px;border:1px solid var(--line);cursor:pointer;position:relative}
 .swatchstrip .sw.sel{outline:2px solid var(--accent);outline-offset:1px}
 .swatchstrip .sw .role{position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:8px;color:rgba(255,255,255,.85);text-shadow:0 1px 1px #000}
-/* per-axis 2-D gamut chart (the diagonal-stripe backdrop shows through where there's no colour) */
-.cchart{position:relative;grid-column:1/3;height:92px;border-radius:8px;border:1px solid var(--line);margin:6px 0 2px;overflow:hidden;cursor:crosshair;
-  background:repeating-linear-gradient(45deg,#14141c,#14141c 4px,#1a1a23 4px,#1a1a23 8px)}
+/* per-axis 2-D gamut chart (flat backdrop shows through where there's no colour) */
+.cchart{position:relative;grid-column:1/3;height:92px;border-radius:8px;border:1px solid var(--line);margin:6px 0 2px;overflow:hidden;cursor:crosshair;background:#101017}
 .cchart canvas{position:absolute;inset:0;width:100%;height:100%}
-.cchart .dot{position:absolute;width:13px;height:13px;margin:-6.5px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000,0 1px 3px #000;pointer-events:none}
+.cchart .dot{position:absolute;width:11px;height:11px;margin:-5.5px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000,0 1px 3px #000;pointer-events:none;z-index:4}
+/* crosshair lines (white, difference-blended so they read over any colour) + the randomize default-range box */
+.cchart .cx{position:absolute;pointer-events:none;z-index:3;background:#fff;mix-blend-mode:difference;opacity:.55}
+.cchart .cx.hl{left:0;right:0;height:1px;margin-top:-.5px}
+.cchart .cx.vl{top:0;bottom:0;width:1px;margin-left:-.5px}
+.cchart .cband{position:absolute;pointer-events:none;z-index:2;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.06);display:none}
 
 /* export dialog */
 dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:12px;
@@ -155,8 +159,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .scrubprev .pt{font-size:10px;font-variant-numeric:tabular-nums;color:var(--ink2);background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px}
 
 /* oklch-style colour axis: gamut-painted track + draggable 3-knob (current value + randomize-band handles) */
-.caxis{position:relative;height:20px;border-radius:6px;border:1px solid var(--line);margin-top:4px;grid-column:1/3;
-  background:repeating-linear-gradient(45deg,#14141c,#14141c 4px,#1a1a23 4px,#1a1a23 8px)}
+.caxis{position:relative;height:20px;border-radius:6px;border:1px solid var(--line);margin-top:4px;grid-column:1/3;background:#101017}
 .caxis .axiscanvas{position:absolute;inset:0;width:100%;height:100%;border-radius:5px}
 .caxis .band{position:absolute;top:0;bottom:0;border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);opacity:.85;pointer-events:none;z-index:1}
 .caxis .h{position:absolute;top:-2px;bottom:-2px;width:5px;margin-left:-2.5px;border-radius:3px;cursor:ew-resize;touch-action:none}
@@ -360,7 +363,7 @@ function clampGamutChroma(p) {
 }
 
 // ---------- absolute OKLCH sampling for the picker tracks/charts (oklch.com-style, fixed scales) ----------
-const C_MAX = 0.4;   // absolute chroma slider ceiling (sRGB ceilC peaks ~0.321; 0.4 gives oklch.com-style OOG headroom)
+const C_MAX = 0.37;   // absolute chroma slider ceiling — oklch.com's sRGB/P3 max (sRGB ceilC peaks ~0.321)
 // Sample ONE axis over its FULL fixed scale, holding the others. base = {L, C, H} absolute. OOG cells reported.
 function cskAxisSamples(axis, base, n = 48) {
   const out = [];
@@ -373,23 +376,6 @@ function cskAxisSamples(axis, base, n = 48) {
     out.push({ hex: hex(rgb), inGamut });
   }
   return out;
-}
-// 2-D gamut slice for a chart. axes ∈ {'lc' (x=L,y=C @ fixed H), 'hc' (x=H,y=C @ fixed L), 'hl' (x=H,y=L @ fixed C)}.
-// Returns {cols, rows, cell[]} row-major, top row = high value of the y-axis. OOG cells flagged (drawn transparent).
-function cskChartGrid(axes, fixed, cols = 56, rows = 40) {
-  const cell = [];
-  for (let r = 0; r < rows; r++) {
-    const fy = 1 - r / (rows - 1);                                  // top row = 1
-    for (let c = 0; c < cols; c++) {
-      const fx = c / (cols - 1); let L, C, H;
-      if (axes === 'lc')      { L = fx;          C = fy * C_MAX; H = fixed; }
-      else if (axes === 'hc') { H = fx * 360;    C = fy * C_MAX; L = fixed; }
-      else                    { H = fx * 360;    L = fy;         C = fixed; }
-      const { rgb, inGamut } = oklchToRgb(L, C, H);
-      cell.push({ hex: hex(rgb), inGamut });
-    }
-  }
-  return { cols, rows, cell };
 }
 
 // ---------- relations (color-relations.md) ----------
@@ -435,14 +421,14 @@ function assembleTransition(rng, p = {}) {
   // BASE is now absolute OKLCH (anchorL/anchorC/anchorH). Re-project its chroma into a manifold "saturation fraction"
   // so the derived roles (ground/gradient/accent) track the base's vividness exactly as before (mono C=0 ⇒ greyscale).
   const aH0 = p.anchorHue != null ? p.anchorHue : 196;
-  const aL0 = p.anchorL != null ? p.anchorL : 0.88;
+  const aL0 = p.anchorL != null ? p.anchorL : 0.65;
   const aC0 = p.anchorC != null ? p.anchorC : 0.15;
   const cf = Math.max(0, Math.min(1, aC0 / Math.max(1e-4, fH(aH0) * ceilC(Math.max(0.02, Math.min(0.99, aL0)), aH0))));
 
   // GROUND — dark recessive; read stops STRAIGHT off the manifold at a high-ridge cool hue (no
   // double-sibling → top stop lands at the spec's ~L0.6 dark-teal launchpad, not near-black).
   const ground = keep('ground', () => {
-    const gH = (p.groundHue != null ? p.groundHue : 196) + rng.float(-6, 6);
+    const gH = aH0 + rng.float(-14, 14);   // ground is analogous to the base (harmonious at any base hue)
     const gd = p.groundDark != null ? p.groundDark : 0.72;
     const topDL = -(0.10 + gd * 0.24);
     const groundStops = [topDL, topDL - 0.08, topDL - 0.21].map(dl => manifoldColour(gH, dl, cf));
@@ -1175,17 +1161,16 @@ function timingRows() {
 function colorRows(defaultHue = 196) {
   return [
     // BASE block — absolute OKLCH H / L / C, fixed scales (oklch.com-style), each a 3-knob band
-    P({ key: 'anchorHue', label: 'Hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'base', full: { min: 0, max: 360 }, band: { randMin: 120, randMax: 330 }, cur: defaultHue, step: 1, dist: 'uniform', wrap: true }),
-    P({ key: 'anchorL', label: 'Lightness', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 0.55, randMax: 0.92 }, cur: 0.88, step: 0.01, dist: 'tri' }),
-    P({ key: 'anchorC', label: 'Chroma', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 0.4 }, band: { randMin: 0.10, randMax: 0.20 }, cur: 0.15, step: 0.005, dist: 'tri' }),
+    P({ key: 'anchorHue', label: 'Hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'base', full: { min: 0, max: 360 }, band: { randMin: 0, randMax: 360 }, cur: defaultHue, step: 1, dist: 'uniform', wrap: true }),
+    P({ key: 'anchorL', label: 'Lightness', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 0.2, randMax: 0.8 }, cur: 0.72, step: 0.01, dist: 'tri' }),
+    P({ key: 'anchorC', label: 'Chroma', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 0.37 }, band: { randMin: 0.12, randMax: 0.37 }, cur: 0.13, step: 0.005, dist: 'tri' }),
     P({ key: 'colorAlpha', label: 'Opacity', unit: '%', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 1, randMax: 1 }, cur: 1.0, step: 0.01, dist: 'tri' }),
     // DERIVED — siblings / gradient-partner / accent (relate to base)
     P({ key: 'siblingSpread', label: 'Lightness spread', group: 'palette', type: 'colorAxis', colorRole: 'sibling', relatesTo: 'anchorHue', full: { min: 0.04, max: 0.40 }, band: { randMin: 0.10, randMax: 0.30 }, cur: 0.18, step: 0.01, dist: 'tri' }),
     P({ key: 'gradientTemplate', label: 'Gradient partner', group: 'palette', type: 'enum', colorRole: 'gradient', relatesTo: 'anchorHue', options: ['mono', 'analogous', 'splitComplement', 'complement', 'triadic'], randSet: ['mono', 'analogous'], cur: 'analogous', dist: 'discrete-weighted' }),
     P({ key: 'accentTemplate', label: 'Accent partner', group: 'palette', type: 'enum', colorRole: 'accent', relatesTo: 'anchorHue', options: ['splitComplement', 'complement', 'triadic', 'analogous'], randSet: ['splitComplement', 'complement'], cur: 'splitComplement', dist: 'discrete-weighted' }),
     P({ key: 'accentTension', label: 'Accent tension', group: 'palette', type: 'colorAxis', colorRole: 'accent', relatesTo: 'anchorHue', full: { min: 0, max: 40 }, band: { randMin: 18, randMax: 30 }, cur: 25, step: 1, dist: 'tri' }),
-    // GROUND — hue + depth (replaces the mood's ground job), pinnable
-    P({ key: 'groundHue', label: 'Ground hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'ground', full: { min: 0, max: 360 }, band: { randMin: 185, randMax: 205 }, cur: 196, step: 1, dist: 'tri', wrap: true }),
+    // GROUND — depth only; the ground HUE is derived from the base hue (analogous) so it harmonises at any hue
     P({ key: 'groundDark', label: 'Ground depth', group: 'palette', type: 'scalar', colorRole: 'ground', full: { min: 0, max: 1 }, band: { randMin: 0.55, randMax: 0.85 }, cur: 0.72, step: 0.01, dist: 'tri' }),
     // policy
     P({ key: 'setCount', label: 'Colour count', group: 'palette', type: 'int', full: { min: 1, max: 4 }, band: { randMin: 1, randMax: 3 }, cur: 2, step: 1, dist: 'discrete-weighted' }),
@@ -1329,12 +1314,32 @@ function pickFamily(rng, lock, pool) {
   return rng.weighted((keys.length ? keys : familyList()).map(k => ({ v: k, w: FAMILIES[k].weight || 1 })));
 }
 
+// On a family change, carry EVERY user edit whose param exists in the new family too (timing/structure/palette/motion/
+// effects/title rows share keys + ranges across all families). ELEMENT rows are skipped: some element keys collide
+// across families with DIFFERENT full ranges (waveCount 2..12 vs 4..24, skewAngle -45..45 vs 0..360) or are
+// family-defining (configPreset crystal/mosaic) — carrying them produced out-of-range values or the wrong family
+// identity (e.g. the Crystal family rendering as Mosaic). Carried bands/curs are also clamped to the new row's
+// full range so a value legal in the source family can never land out of range here.
+function carryEdits(rows, prev) {
+  const clampToFull = (v, full) => full ? Math.max(full.min, Math.min(full.max, v)) : v;
+  for (const r of rows) {
+    if (r.group === 'element') continue;                                                  // element params are family-specific — never carry
+    const p = prev.find(q => q.key === r.key);
+    if (!p) continue;
+    if (p.band) r.band = r.full ? { randMin: clampToFull(p.band.randMin, r.full), randMax: clampToFull(p.band.randMax, r.full) } : { ...p.band };
+    if (p.cur != null && (!r.options || r.options.includes(p.cur))) r.cur = (typeof p.cur === 'number') ? clampToFull(p.cur, r.full) : p.cur;   // keep cur unless this family's enum lacks it
+    if (p.randSet) { const inter = r.options ? p.randSet.filter(o => r.options.includes(o)) : [...p.randSet]; if (inter.length) r.randSet = inter; }   // intersect enum sets with this family's options
+  }
+}
+
 function rollTransition(seedStr, opts = {}) {
   const rng = makeRng(seedStr);
   const familyKey = opts.family || pickFamily(rng, opts.familyLock, opts.famRand);
   const fam = FAMILIES[familyKey];
-  // carry the user's band edits if staying in the same family; else clone the family template
-  const rows = (opts.rows && opts.rowsFamily === familyKey) ? opts.rows : cloneRows(fam.rows);
+  // same family → keep ALL edits; family change → fresh family rows but carry the (family-independent) palette edits
+  let rows;
+  if (opts.rows && opts.rowsFamily === familyKey) rows = opts.rows;
+  else { rows = cloneRows(fam.rows); if (opts.rows) carryEdits(rows, opts.rows); }
   const params = resolveSpec(rows, rng);
   clampGamutChroma(params);   // rolls stay vivid AND in-gamut; user picker edits bypass this and may go OOG
   params.family = fam.familyId;
@@ -1350,6 +1355,7 @@ function defaultState(familyKey = 'waves', seed = 'psg-default') {
   const fam = FAMILIES[familyKey];
   const rows = cloneRows(fam.rows);
   const params = currentValues(rows);
+  clampGamutChroma(params);   // keep the un-rolled default base in-gamut (mirror rollTransition; else the first-load picker is OOG)
   params.family = fam.familyId;
   params._familyKey = familyKey;
   params.revealId = REVEAL_ID[params.revealKind] ?? 0;
@@ -1868,12 +1874,13 @@ function downloadZip(zip, name = 'psg-frames.zip') {
 
 
 // ===== js/model3d.js =====
-// model3d.js — self-contained WebGL2 OKLCH gamut solid (oklch.com-style), zero deps.
-// The sRGB cube's 6 faces are sampled, converted to OKLCH, plotted as (x=L, y=C, z=H), unlit vertex-coloured.
-// Three gray iso-lines (current L / C / H planes) mark the current colour on the surface. Orbit by drag, zoom by wheel.
+// model3d.js — self-contained WebGL2 OKLCH gamut solid, zero deps. Mirrors oklch.com's lib/model.ts structure:
+// a single-valued height field over (L,H) with CHROMA as the height (y-up); x=L, z=H/360. The hue-end faces are
+// closed down to a grey lightness-ramp FLOOR (C=0 plane), so it reads as a solid with sides + bottom, not an open shell.
+// Three grey iso-lines (current L / C / H planes) mark the current colour. Orbit by drag, zoom by wheel.
 // createGamut3D(canvas) → { setSlice(L,C,H), redraw(), dispose() } or null if WebGL2 is unavailable.
 
-const M3_CMAX = 0.4;   // matches the picker's absolute chroma ceiling (so the 3-D y-axis lines up with the charts)
+const M3_CMAX = 0.37;   // matches the picker's absolute chroma ceiling (so the 3-D height lines up with the charts)
 
 // ---- column-major mat4 helpers ----
 const m3cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -1890,21 +1897,35 @@ function m3lookAt(eye, ctr, up) {
 }
 function m3mul(a, b) { const o = new Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; }
 
-// ---- gamut mesh: 6 RGB-cube faces → OKLCH coords, grid-triangulated, vertex-coloured ----
-function buildMesh(div) {
+// ---- gamut mesh: height field C=ceilC(L,H) (y=chroma) over the (L,H) plane, hue-ends skirted to a grey floor ----
+function buildMesh(divL, divH) {
   const pos = [], col = [], idx = [];
-  const map = (R, G, B) => { const o = rgbToOklch(R * 255, G * 255, B * 255); return [o.L, o.C / (2 * M3_CMAX), (((o.H % 360) + 360) % 360) / 360]; };
-  const faces = [(u, v) => [0, u, v], (u, v) => [1, u, v], (u, v) => [u, 0, v], (u, v) => [u, 1, v], (u, v) => [u, v, 0], (u, v) => [u, v, 1]];
-  for (const f of faces) {
-    const base = pos.length / 3;
-    for (let i = 0; i <= div; i++) for (let j = 0; j <= div; j++) { const rgb = f(i / div, j / div), p = map(rgb[0], rgb[1], rgb[2]); pos.push(p[0], p[1], p[2]); col.push(rgb[0], rgb[1], rgb[2]); }
-    for (let i = 0; i < div; i++) for (let j = 0; j < div; j++) { const a = base + i * (div + 1) + j, b = a + 1, c = a + (div + 1), d = c + 1; idx.push(a, b, c, b, d, c); }
-  }
+  const Yc = c => c / (2 * M3_CMAX);                                    // chroma → normalised height
+  const push = (x, y, z, r, g, b) => { pos.push(x, y, z); col.push(r, g, b); };
+  const stride = divH + 1;
+  // chroma capped to the gamut edge, tapered to 0 at the black/white poles. ceilC's ±1e-4 gamut slack otherwise fakes
+  // ~0.11 chroma at L≈0 (machine-zero rgb still passes), spiking black protrusions the true sRGB solid doesn't have.
+  // The taper collapses those AND pins the L-ends onto the floor, so the solid closes on all four sides without walls.
+  const ss = (e, x) => { const t = Math.max(0, Math.min(1, x / e)); return t * t * (3 - 2 * t); };
+  const cap = (L, H) => ceilC(L, H) * ss(0.08, L) * ss(0.08, 1 - L);
+  // top shell
+  for (let i = 0; i <= divL; i++) { const L = i / divL;
+    for (let j = 0; j <= divH; j++) { const H = j / divH * 360, C = cap(L, H), { rgb } = oklchToRgb(L, C, H); push(L, Yc(C), j / divH, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255); } }
+  for (let i = 0; i < divL; i++) for (let j = 0; j < divH; j++) { const a = i * stride + j; idx.push(a, a + 1, a + stride, a + 1, a + stride + 1, a + stride); }
+  // skirt: close the H=0 and H=360 hue-ends (the red leaf cross-sections) straight down to the floor (C=0)
+  for (const j of [0, divH]) { const base = pos.length / 3, H = j / divH * 360, z = j / divH;
+    for (let i = 0; i <= divL; i++) { const L = i / divL, C = cap(L, H), { rgb } = oklchToRgb(L, C, H), r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255; push(L, Yc(C), z, r, g, b); push(L, 0, z, r * 0.55, g * 0.55, b * 0.55); }
+    for (let i = 0; i < divL; i++) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+  // grey lightness-ramp floor on the C=0 plane the solid sits on
+  { const base = pos.length / 3, seg = 24;
+    for (let i = 0; i <= seg; i++) { const { rgb } = oklchToRgb(i / seg, 0, 0), g = rgb[0] / 255; push(i / seg, 0, 0, g, g, g); push(i / seg, 0, 1, g, g, g); }
+    for (let i = 0; i < seg; i++) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+  // centre on the origin
   const n = pos.length / 3; let cx = 0, cy = 0, cz = 0;
   for (let i = 0; i < n; i++) { cx += pos[i * 3]; cy += pos[i * 3 + 1]; cz += pos[i * 3 + 2]; }
   cx /= n; cy /= n; cz /= n;
   for (let i = 0; i < n; i++) { pos[i * 3] -= cx; pos[i * 3 + 1] -= cy; pos[i * 3 + 2] -= cz; }
-  return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint16Array(idx), centroid: [cx, cy, cz] };
+  return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint16Array(idx), centroid: [cx, cy, cz], cmax: M3_CMAX };
 }
 
 function m3compile(gl, vs, fs) {
@@ -1922,11 +1943,11 @@ in vec3 aPos; in vec3 aCol; uniform mat4 uMVP; out vec3 vCol; out vec3 vPos;
 void main(){ vCol = aCol; vPos = aPos; gl_Position = uMVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float; in vec3 vCol; in vec3 vPos; uniform vec3 uSlice; out vec4 o;
 void main(){ vec3 c = vCol; float w = 0.006, g = 0.62;
-  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.x - uSlice.x)));
-  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.y - uSlice.y)));
-  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.z - uSlice.z)));
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.x - uSlice.x)));   // L plane
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.y - uSlice.y)));   // C plane
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.z - uSlice.z)));   // H plane
   o = vec4(c, 1.0); }`);
-  const mesh = buildMesh(24);
+  const mesh = buildMesh(44, 80);
   const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
   const buf = (data, loc, n, target = gl.ARRAY_BUFFER) => { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); } };
   buf(mesh.pos, gl.getAttribLocation(prog, 'aPos'), 3);
@@ -1934,7 +1955,7 @@ void main(){ vec3 c = vCol; float w = 0.006, g = 0.62;
   buf(mesh.idx, -1, 0, gl.ELEMENT_ARRAY_BUFFER);
   const uMVP = gl.getUniformLocation(prog, 'uMVP'), uSlice = gl.getUniformLocation(prog, 'uSlice');
   gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
-  let yaw = 0.9, pitch = 0.38, dist = 1.12, slice = [9, 9, 9], raf = 0;
+  let yaw = 0.7, pitch = 0.34, dist = 1.7, slice = [9, 9, 9], raf = 0;
   function draw() {
     raf = 0;
     const w = canvas.clientWidth || 280, h = canvas.clientHeight || 150, dpr = Math.min(devicePixelRatio || 1, 2);
@@ -1956,7 +1977,7 @@ void main(){ vec3 c = vCol; float w = 0.006, g = 0.62;
   canvas.addEventListener('wheel', e => { e.preventDefault(); dist = Math.max(0.95, Math.min(3.5, dist * (1 + Math.sign(e.deltaY) * 0.08))); redraw(); }, { passive: false });
   redraw();
   return {
-    setSlice(L, C, H) { slice = [L - mesh.centroid[0], C / (2 * M3_CMAX) - mesh.centroid[1], (((H % 360) + 360) % 360) / 360 - mesh.centroid[2]]; redraw(); },
+    setSlice(L, C, H) { slice = [L - mesh.centroid[0], C / (2 * mesh.cmax) - mesh.centroid[1], (((H % 360) + 360) % 360) / 360 - mesh.centroid[2]]; redraw(); },
     redraw,
     dispose() { const e = gl.getExtension('WEBGL_lose_context'); if (e) e.loseContext(); },
   };
@@ -2227,11 +2248,13 @@ function boolRow(app, ui, p) {
 function colorPanel(app, ui) {
   const wrap = el('div', { class: 'colpanel' });
 
-  // SCHEMES {mono, colourful, full-range} — real presets; same click/dblclick model as every other button
+  // SCHEMES {mono, colourful, full-range} — same interaction model as every other button:
+  //   single click = load the preset (sets the ranges; your later edits then persist through Randomize)
+  //   double-click / long-press = toggle the dotted "Randomize may re-apply this preset" flag. OFF by default → edits stick.
   const schemeRow = psgSelectableBtn({
     options: [{ val: 'mono', label: 'Mono' }, { val: 'colourful', label: 'Colourful' }, { val: 'full-range', label: 'Full range' }],
     get: () => app.state.scheme,
-    set: k => { app.state.scheme = k; cskApplyScheme(app, k); app.reassemble(); app.refresh(); refreshBody(app, ui); },   // manual pick only — never touches the randomize set
+    set: k => { app.applyScheme(k); refreshBody(app, ui); },
     inRand: k => app.state.schemeRand && app.state.schemeRand.has(k),
     toggleRand: k => { app.state.schemeRand.has(k) ? app.state.schemeRand.delete(k) : app.state.schemeRand.add(k); },
   });
@@ -2262,7 +2285,7 @@ function colorPanel(app, ui) {
 
   // DERIVED roles — header = role name, row label = what it changes
   const derived = [['sibling', 'Siblings', ['siblingSpread']], ['gradient', 'Gradient partners', ['gradientTemplate']],
-    ['accent', 'Accent partners', ['accentTemplate', 'accentTension']], ['ground', 'Ground', ['groundHue', 'groundDark']]];
+    ['accent', 'Accent partners', ['accentTemplate', 'accentTension']], ['ground', 'Ground', ['groundDark']]];
   for (const [role, lbl, keys] of derived) {
     const open = ui._colExpanded === role || (role === 'sibling' && ui._colExpanded === 'siblingLight');   // Light swatch opens the Siblings block too
     const block = el('div', { class: 'roleblock' + (open ? ' open' : '') });
@@ -2329,7 +2352,7 @@ function cskAxisParse(app, p, text) {
   const n = parseFloat(text); if (!Number.isFinite(n)) return null;
   if (p.key === 'colorAlpha') return Math.max(0, Math.min(1, n / 100));
   if (p.key === 'anchorHue') return ((n % 360) + 360) % 360;
-  return Math.max(p.full.min, Math.min(p.full.max, n));   // anchorL 0..1, anchorC 0..0.4
+  return Math.max(p.full.min, Math.min(p.full.max, n));   // anchorL 0..1, anchorC 0..0.37
 }
 function cskPaintTrack(cv, app, p, isAlpha) {
   const w = cv.clientWidth || 280, h = cv.clientHeight || 14, dpr = Math.min(devicePixelRatio || 1, 2);
@@ -2343,7 +2366,11 @@ function cskPaintTrack(cv, app, p, isAlpha) {
   const base = { L: app.state.params.anchorL, C: app.state.params.anchorC, H: app.state.params.anchorHue };
   const axis = p.key === 'anchorHue' ? 'hue' : p.key === 'anchorL' ? 'value' : 'chroma';
   const n = Math.max(24, Math.min(160, Math.round(w))), s = cskAxisSamples(axis, base, n);   // ~1 sample/px → crisp gamut edge
-  for (let i = 0; i < n; i++) { const c = s[i]; if (c.inGamut) { g.fillStyle = c.hex; g.fillRect((i / n) * w, 0, w / n + 1, h); } }   // out-of-gamut left transparent
+  for (let i = 0; i < n; i++) {   // gap-free, NON-overlapping integer rects — overlap would double-paint the faint OOG cells into a barcode
+    const c = s[i], x0 = Math.round(i / n * w), x1 = Math.round((i + 1) / n * w);
+    g.globalAlpha = c.inGamut ? 1 : 0.28; g.fillStyle = c.hex; g.fillRect(x0, 0, x1 - x0, h);   // OOG = faint clamped colour so the track never looks empty
+  }
+  g.globalAlpha = 1;
 }
 let _cskChk; function cskCheckerPattern(g) { if (_cskChk) return _cskChk; const c = document.createElement('canvas'); c.width = c.height = 10; const x = c.getContext('2d'); x.fillStyle = '#9a9aa6'; x.fillRect(0, 0, 10, 10); x.fillStyle = '#5a5a66'; x.fillRect(0, 0, 5, 5); x.fillRect(5, 5, 5, 5); return _cskChk = g.createPattern(c, 'repeat'); }
 
@@ -2352,17 +2379,40 @@ let _cskChk; function cskCheckerPattern(g) { if (_cskChk) return _cskChk; const 
 // In-gamut pixels painted true colour, out-of-gamut left transparent; crosshair at current; click/drag sets the two axes.
 function cskChart(app, ui, axes) {
   const pad = el('div', { class: 'cchart' });
-  const cv = el('canvas'); const dot = el('div', { class: 'dot' }); pad.append(cv, dot);
+  const cv = el('canvas');
+  const band = el('div', { class: 'cband' }), hL = el('div', { class: 'cx hl' }), vL = el('div', { class: 'cx vl' }), dot = el('div', { class: 'dot' });
+  pad.append(cv, band, hL, vL, dot);
   const P = () => app.state.params;
   const fixedOf = () => axes === 'lc' ? P().anchorHue : axes === 'hc' ? P().anchorL : P().anchorC;
   const xf = () => axes === 'lc' ? P().anchorL : P().anchorHue / 360;            // x fraction (0..1)
   const yf = () => axes === 'hl' ? P().anchorL : P().anchorC / C_MAX;            // y fraction (top = high)
-  const paint = () => {
-    const w = cv.clientWidth || 300, h = cv.clientHeight || 92, dpr = Math.min(devicePixelRatio || 1, 2);
-    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const grid = cskChartGrid(axes, fixedOf(), 72, 48), cw = w / grid.cols, ch = h / grid.rows;
-    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++) { const cell = grid.cell[r * grid.cols + c]; if (cell.inGamut) { g.fillStyle = cell.hex; g.fillRect(c * cw, r * ch, cw + 1, ch + 1); } }
-    dot.style.left = xf() * 100 + '%'; dot.style.top = (1 - yf()) * 100 + '%';
+  const xkey = axes === 'lc' ? 'anchorL' : 'anchorHue', ykey = axes === 'hl' ? 'anchorL' : 'anchorC';
+  const xmax = axes === 'lc' ? 1 : 360, ymax = axes === 'hl' ? 1 : C_MAX;
+  const rowOf = k => app.rows().find(r => r.key === k);
+  let lastFixed = NaN;
+  const paintGrid = () => {                                                       // per-pixel ⇒ smooth gamut edge (no blocks)
+    const w = Math.max(2, Math.round(cv.clientWidth || 300)), h = Math.max(2, Math.round(cv.clientHeight || 92));
+    cv.width = w; cv.height = h; const g = cv.getContext('2d'), img = g.createImageData(w, h), d = img.data, fixed = fixedOf();
+    for (let yy = 0; yy < h; yy++) { const fy = 1 - yy / (h - 1);
+      for (let xx = 0; xx < w; xx++) { const fx = xx / (w - 1); let L, C, Hh;
+        if (axes === 'lc') { L = fx; C = fy * C_MAX; Hh = fixed; }
+        else if (axes === 'hc') { Hh = fx * 360; C = fy * C_MAX; L = fixed; }
+        else { Hh = fx * 360; L = fy; C = fixed; }
+        const o = oklchToRgb(L, C, Hh);
+        if (o.inGamut) { const p = 4 * (yy * w + xx); d[p] = o.rgb[0]; d[p + 1] = o.rgb[1]; d[p + 2] = o.rgb[2]; d[p + 3] = 255; }   // OOG ⇒ transparent
+      }
+    }
+    g.putImageData(img, 0, 0); lastFixed = fixed;
+  };
+  const layout = () => {
+    if (fixedOf() !== lastFixed) paintGrid();                                     // only repaint the slice when its FIXED axis moves
+    const x = xf() * 100, y = (1 - yf()) * 100;
+    dot.style.left = x + '%'; dot.style.top = y + '%'; hL.style.top = y + '%'; vL.style.left = x + '%';
+    const xr = rowOf(xkey), yr = rowOf(ykey);
+    if (ui.showRanges && xr && yr) {                                              // the randomize default-range box for the two charted axes
+      const a0 = xr.band.randMin / xmax * 100, a1 = xr.band.randMax / xmax * 100, c0 = (1 - yr.band.randMax / ymax) * 100, c1 = (1 - yr.band.randMin / ymax) * 100;
+      band.style.cssText = `display:block;left:${a0}%;top:${c0}%;width:${a1 - a0}%;height:${c1 - c0}%`;
+    } else band.style.display = 'none';
   };
   const set = ev => {
     const r = cv.getBoundingClientRect();
@@ -2373,7 +2423,8 @@ function cskChart(app, ui, axes) {
     cskRepaintColourUI(app, ui);
   };
   pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); set(e); const m = ev => set(ev); const up = () => { pad.removeEventListener('pointermove', m); pad.removeEventListener('pointerup', up); }; pad.addEventListener('pointermove', m); pad.addEventListener('pointerup', up); });
-  requestAnimationFrame(paint); ui._layouts.push(paint);
+  requestAnimationFrame(() => { paintGrid(); layout(); });
+  ui._layouts.push(layout);
   return pad;
 }
 // 3-D OKLCH gamut solid (WebGL2, oklch.com-style). Built ONCE and reused across panel rebuilds (one context, no leak).
@@ -2457,14 +2508,18 @@ function cskRepaintColourUI(app, ui) {
 // SCHEMES with real semantics {mono, colourful, full-range} — presets that rewrite the colour bands/values
 function cskApplyScheme(app, key) {
   const rows = app.rows(), row = k => rows.find(r => r.key === k), set = (k, v) => { app.state.params[k] = v; };
-  if (key === 'mono') {                              // TRUE greyscale: chroma locked to 0
-    set('anchorC', 0); const r = row('anchorC'); if (r) { r.band.randMin = 0; r.band.randMax = 0; }
-    set('gradientTemplate', 'mono'); set('accentTemplate', 'analogous');
-  } else if (key === 'colourful') {                  // vivid (near the cool-hue ceiling, absolute C)
-    set('anchorC', 0.16); const r = row('anchorC'); if (r) { r.band.randMin = 0.13; r.band.randMax = 0.20; }
+  const band = (k, lo, hi) => { const r = row(k); if (r) { r.band.randMin = lo; r.band.randMax = hi; } };
+  band('anchorHue', 0, 360);          // EVERY preset: full hue range …
+  band('anchorL', 0.2, 0.8);          // … and lightness 0.2..0.8. Presets differ only in chroma.
+  if (key === 'mono') {                              // TRUE greyscale
+    band('anchorC', 0, 0); set('anchorC', 0); set('gradientTemplate', 'mono'); set('accentTemplate', 'analogous');
+  } else if (key === 'colourful') {                  // vivid — band reaches the bar top (0.37); the current colour jumps to its in-gamut max for its hue/L
+    band('anchorC', 0.12, 0.37);
+    const H = app.state.params.anchorHue, L = Math.max(0.02, Math.min(0.99, app.state.params.anchorL));
+    set('anchorC', Math.floor(fH(H) * ceilC(L, H) * 1e4) / 1e4);   // max chroma at this hue/L, FLOORED so it never rounds past the gamut edge (stays in-gamut + idempotent)
     set('gradientTemplate', 'analogous'); set('accentTemplate', 'splitComplement'); set('accentTension', 28);
-  } else if (key === 'full-range') {                 // open the WHOLE range on all 3 colour dims
-    for (const k of ['anchorHue', 'anchorL', 'anchorC']) { const r = row(k); if (r) { r.band.randMin = r.full.min; r.band.randMax = r.full.max; } }
+  } else if (key === 'full-range') {                 // chroma fully open too
+    band('anchorC', 0, 0.37);
   }
 }
 
@@ -2515,7 +2570,7 @@ function snp(v, p) { if (p.step) v = Math.round(v / p.step) * p.step; return +v.
 // and the headless harness drive (roll / seek / setParam / reassemble / export).
 
 const COLOR_KEYS = new Set(['anchorHue', 'anchorL', 'anchorC', 'siblingSpread',
-  'gradientTemplate', 'accentTemplate', 'accentTension', 'groundHue', 'groundDark', 'setCount']);
+  'gradientTemplate', 'accentTemplate', 'accentTension', 'groundDark', 'setCount']);
 
 function boot() {
   const canvas = document.getElementById('stage');
@@ -2540,14 +2595,15 @@ function boot() {
         prevPalette: this.state ? this.state.palette : null,
         rows: this.state ? this.state.rows : null, rowsFamily: this.state ? this.state.familyKey : null,
       }, opts));
-      this.state.famRand = prevFamRand; this.state.schemeRand = prevSchemeRand; this.state.scheme = prevScheme;   // carry UI-only eligibility sets
-      // a dotted scheme preset re-shapes the RESOLVED family's colour bands, then we re-sample the colour params so it takes effect
+      this.state.famRand = prevFamRand; this.state.schemeRand = prevSchemeRand; this.state.scheme = prevScheme;
+      // OPT-IN only: a DOTTED scheme re-applies its preset (re-shaping + re-sampling the colour bands). Default pool is
+      // empty, so by default nothing is re-applied and every band/value edit persists through Randomize.
       if (prevSchemeRand && prevSchemeRand.size) {
         const sk = makeRng(seed + '-pick').pick([...prevSchemeRand]);
         this.state.scheme = sk; cskApplyScheme(this, sk);
         const crng = makeRng(seed + '-recolour');
         for (const r of this.state.rows) if (r.group === 'palette') this.state.params[r.key] = sampleParam(r, crng);
-        clampGamutChroma(this.state.params);   // keep the scheme-resampled base in-gamut too
+        clampGamutChroma(this.state.params);
         this.reassemble();
       }
       this.refresh(); return this.state;
@@ -2555,6 +2611,7 @@ function boot() {
     reassemble() { this.state.palette = assembleTransition(makeRng(this.state.seed), this.state.params); },
     setParam(k, v) { this.state.params[k] = v; if (COLOR_KEYS.has(k)) { this.reassemble(); if (this.onColorChange) this.onColorChange(); } if (this.onParamChange) this.onParamChange(k); this.refresh(); },
     setFamily(k) { this.roll({ family: k }); },
+    applyScheme(k) { this.state.scheme = k; cskApplyScheme(this, k); this.reassemble(); this.refresh(); },   // load a preset's ranges (UI adds refreshBody)
     // tiny thumbnail of frame t for the scrub hover-preview (snapshot is synchronous after the draw, so no preserveDrawingBuffer needed)
     thumbAt(t, thumbCanvas) {
       const wasPlaying = this.playing; this.playing = false;
@@ -2576,8 +2633,8 @@ function boot() {
   };
   window.PSG = app;
   app.state.famRand = new Set(Object.keys(FAMILIES));   // all families dotted = eligible by default
-  app.state.schemeRand = new Set(['colourful']);        // only 'colourful' randomize-eligible by default
-  app.state.scheme = 'colourful';                       // reflect the default-eligible preset in the scheme buttons
+  app.state.schemeRand = new Set();                     // NO preset dotted by default → Randomize never re-applies one → edits persist
+  app.state.scheme = 'colourful';                       // active preset (the default bands ARE the colourful preset)
 
   resizeCanvas(app);
   window.addEventListener('resize', () => { resizeCanvas(app); app.refresh(); });
