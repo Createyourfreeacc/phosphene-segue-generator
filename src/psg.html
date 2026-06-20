@@ -105,9 +105,11 @@ details.grp[open]>summary .caret{transform:rotate(90deg)}
 .swatchstrip .sw{flex:1;height:30px;border-radius:6px;border:1px solid var(--line);cursor:pointer;position:relative}
 .swatchstrip .sw.sel{outline:2px solid var(--accent);outline-offset:1px}
 .swatchstrip .sw .role{position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:8px;color:rgba(255,255,255,.85);text-shadow:0 1px 1px #000}
-.cpad{position:relative;grid-column:1/3;height:150px;border-radius:8px;border:1px solid var(--line);margin:6px 0;overflow:hidden;cursor:crosshair}
-.cpad canvas{position:absolute;inset:0;width:100%;height:100%}
-.cpad .dot{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000,0 1px 3px #000;pointer-events:none}
+/* per-axis 2-D gamut chart (the diagonal-stripe backdrop shows through where there's no colour) */
+.cchart{position:relative;grid-column:1/3;height:92px;border-radius:8px;border:1px solid var(--line);margin:6px 0 2px;overflow:hidden;cursor:crosshair;
+  background:repeating-linear-gradient(45deg,#14141c,#14141c 4px,#1a1a23 4px,#1a1a23 8px)}
+.cchart canvas{position:absolute;inset:0;width:100%;height:100%}
+.cchart .dot{position:absolute;width:13px;height:13px;margin:-6.5px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000,0 1px 3px #000;pointer-events:none}
 
 /* export dialog */
 dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:12px;
@@ -152,15 +154,22 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .scrubprev canvas{width:128px;height:72px;border-radius:6px;border:1px solid var(--line2);background:#0c0c12;box-shadow:0 4px 16px -4px #000}
 .scrubprev .pt{font-size:10px;font-variant-numeric:tabular-nums;color:var(--ink2);background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px}
 
-/* oklch-style coloured axis sliders */
-.axisbar{position:relative;height:16px;border-radius:5px;overflow:hidden;border:1px solid var(--line);margin-top:3px;grid-column:1/3}
-.axisbar .axiscanvas{position:absolute;inset:0;width:100%;height:100%}
-.axisbar .axisrange{position:absolute;inset:0;width:100%;height:100%;margin:0;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
-.axisbar .axisrange::-webkit-slider-thumb{-webkit-appearance:none;width:6px;height:22px;margin-top:-3px;border-radius:3px;background:#fff;box-shadow:0 0 0 1.5px #000,0 0 0 3px rgba(255,255,255,.6)}
-.axisbar .axisrange::-moz-range-thumb{width:6px;height:22px;border:0;border-radius:3px;background:#fff;box-shadow:0 0 0 1.5px #000}
-.axisbar .axisrange::-moz-range-track{background:transparent}
+/* oklch-style colour axis: gamut-painted track + draggable 3-knob (current value + randomize-band handles) */
+.caxis{position:relative;height:20px;border-radius:6px;border:1px solid var(--line);margin-top:4px;grid-column:1/3;
+  background:repeating-linear-gradient(45deg,#14141c,#14141c 4px,#1a1a23 4px,#1a1a23 8px)}
+.caxis .axiscanvas{position:absolute;inset:0;width:100%;height:100%;border-radius:5px}
+.caxis .band{position:absolute;top:0;bottom:0;border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);opacity:.85;pointer-events:none;z-index:1}
+.caxis .h{position:absolute;top:-2px;bottom:-2px;width:5px;margin-left:-2.5px;border-radius:3px;cursor:ew-resize;touch-action:none}
+.caxis .h.cur{width:7px;margin-left:-3.5px;background:#fff;box-shadow:0 0 0 1.5px #000,0 0 0 3px rgba(255,255,255,.55);z-index:3}
+.caxis .h.bnd{background:rgba(255,255,255,.7);box-shadow:0 0 0 1px #000;z-index:2}
+.caxis.noband .h.bnd,.caxis.noband .band{display:none}
+input.pval{font:inherit;font-size:11px;width:58px}
+input.pval.pedit{cursor:text}
+input.pval:focus,.csreadout .cscode:not([readonly]):focus{outline:none;border-color:var(--accent)}
+.csreadout .cscode:not([readonly]){cursor:text}
 /* 3-D gamut mini + readout */
-.gamut3d{grid-column:1/3;height:96px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);margin:6px 0;overflow:hidden}
+.gamut3d{grid-column:1/3;height:172px;border:1px solid var(--line);border-radius:8px;background:#0c0c12;margin:8px 0 4px;overflow:hidden;cursor:grab;touch-action:none}
+.gamut3d:active{cursor:grabbing}
 .gamut3d canvas{width:100%;height:100%;display:block}
 .csreadout{grid-column:1/3;display:flex;gap:6px;margin:4px 0}
 .csreadout .cscode{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);
@@ -275,6 +284,30 @@ function rgbToOklch(r, g, b) {
 const hex = ([r, g, b]) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0')).join('').toUpperCase();
 function hexToRgb(h) { h = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
 
+// ---------- extra colour-format conversions for the readout (oklch.com parity) ----------
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+  const l = (mx + mn) / 2, s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  return { h, s, l };
+}
+function srgbToXyz([r, g, b]) {
+  const R = srgbToLin(r), G = srgbToLin(g), B = srgbToLin(b);   // srgbToLin takes 0..255
+  return [0.4124564 * R + 0.3575761 * G + 0.1804375 * B, 0.2126729 * R + 0.7151522 * G + 0.0721750 * B, 0.0193339 * R + 0.1191920 * G + 0.9503041 * B];
+}
+function srgbToLab(rgb) {
+  const [X, Y, Z] = srgbToXyz(rgb), Xn = 0.95047, Yn = 1, Zn = 1.08883, e = 216 / 24389, k = 24389 / 27;
+  const f = t => t > e ? Math.cbrt(t) : (k * t + 16) / 116;
+  const fx = f(X / Xn), fy = f(Y / Yn), fz = f(Z / Zn);
+  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+function srgbToLch(rgb) { const { L, a, b } = srgbToLab(rgb); return { L, C: Math.hypot(a, b), H: ((Math.atan2(b, a) / DEG) + 360) % 360 }; }
+function srgbToP3([r, g, b]) {                                // sRGB 0..255 → display-p3 channels 0..1
+  const R = srgbToLin(r), G = srgbToLin(g), B = srgbToLin(b);
+  return [0.8224621 * R + 0.1775380 * G, 0.0331941 * R + 0.9668058 * G, 0.0170827 * R + 0.0723974 * G + 0.9105199 * B].map(linToSrgb);
+}
+
 // ---------- gamut ceiling + the manifold spine ----------
 // max in-gamut chroma at (L,H) — binary search to the sRGB edge. Cheap (per-palette, not per-pixel).
 function ceilC(L, H) {
@@ -314,26 +347,47 @@ function manifoldColour(H, dL = 0, fMul = 1) {
   return { L, C, H, rgb, hex: hex(rgb) };
 }
 
-// ---------- colour-axis sampling for the picker tracks (oklch.com-style) ----------
-// Sample the manifold along ONE axis, holding the others. base = {H, dL, chromaF}. Pure, reused by sliders + pad.
+// absolute OKLCH colour (oklch.com-style base): clamps to the sRGB cube on render, reports inGamut for the OOG overlay.
+function absColour(L, C, H) {
+  H = ((H % 360) + 360) % 360;
+  const { rgb, inGamut } = oklchToRgb(L, C, H);
+  return { L, C, H, rgb, hex: hex(rgb), inGamut };
+}
+// clamp a ROLLED base chroma to the in-gamut nice-ceiling so Randomize stays vivid AND in-gamut (user edits bypass this).
+function clampGamutChroma(p) {
+  if (p.anchorC != null && p.anchorL != null && p.anchorHue != null)
+    p.anchorC = Math.min(p.anchorC, fH(p.anchorHue) * ceilC(Math.max(0.02, Math.min(0.99, p.anchorL)), p.anchorHue));
+}
+
+// ---------- absolute OKLCH sampling for the picker tracks/charts (oklch.com-style, fixed scales) ----------
+const C_MAX = 0.4;   // absolute chroma slider ceiling (sRGB ceilC peaks ~0.321; 0.4 gives oklch.com-style OOG headroom)
+// Sample ONE axis over its FULL fixed scale, holding the others. base = {L, C, H} absolute. OOG cells reported.
 function cskAxisSamples(axis, base, n = 48) {
   const out = [];
   for (let i = 0; i < n; i++) {
     const u = i / (n - 1); let L, C, H;
-    if (axis === 'hue')        { H = u * 360; L = Math.max(0.02, Math.min(0.99, naturalL(H) + base.dL)); C = base.chromaF * ceilC(L, H); }
-    else if (axis === 'value') { H = base.H; L = Math.max(0.02, Math.min(0.99, naturalL(H) + (-0.45 + u * 0.9))); C = base.chromaF * ceilC(L, H); }   // dL slider range, thumb-aligned
-    else                       { H = base.H; L = Math.max(0.02, Math.min(0.99, naturalL(H) + base.dL)); C = u * ceilC(L, H); }
+    if (axis === 'hue')        { H = u * 360;  L = base.L; C = base.C; }
+    else if (axis === 'value') { H = base.H;   L = u;      C = base.C; }       // absolute L, full 0..1
+    else                       { H = base.H;   L = base.L; C = u * C_MAX; }    // absolute C, 0..C_MAX
     const { rgb, inGamut } = oklchToRgb(L, C, H);
     out.push({ hex: hex(rgb), inGamut });
   }
   return out;
 }
-// 2-D slice grid (L vertical × chroma-fraction horizontal) at a fixed hue — for the pad. Top row = high L.
-function cskSliceGrid(H, cols = 40, rows = 28) {
+// 2-D gamut slice for a chart. axes ∈ {'lc' (x=L,y=C @ fixed H), 'hc' (x=H,y=C @ fixed L), 'hl' (x=H,y=L @ fixed C)}.
+// Returns {cols, rows, cell[]} row-major, top row = high value of the y-axis. OOG cells flagged (drawn transparent).
+function cskChartGrid(axes, fixed, cols = 56, rows = 40) {
   const cell = [];
   for (let r = 0; r < rows; r++) {
-    const L = 0.99 - (r / (rows - 1)) * 0.97, cap = ceilC(L, H);
-    for (let c = 0; c < cols; c++) { const { rgb, inGamut } = oklchToRgb(L, (c / (cols - 1)) * cap, H); cell.push({ hex: hex(rgb), inGamut }); }
+    const fy = 1 - r / (rows - 1);                                  // top row = 1
+    for (let c = 0; c < cols; c++) {
+      const fx = c / (cols - 1); let L, C, H;
+      if (axes === 'lc')      { L = fx;          C = fy * C_MAX; H = fixed; }
+      else if (axes === 'hc') { H = fx * 360;    C = fy * C_MAX; L = fixed; }
+      else                    { H = fx * 360;    L = fy;         C = fixed; }
+      const { rgb, inGamut } = oklchToRgb(L, C, H);
+      cell.push({ hex: hex(rgb), inGamut });
+    }
   }
   return { cols, rows, cell };
 }
@@ -344,7 +398,7 @@ function sibling(anchor, dL) {
   const k = 28; // ~5.6°/0.2L toward the cooler neighbour
   const H = anchor.H + k * dL;
   const L = Math.max(0.04, Math.min(0.98, anchor.L + dL));
-  const ratio = anchor.C / Math.max(1e-4, ceilC(anchor.L, anchor.H));
+  const ratio = Math.min(1, anchor.C / Math.max(1e-4, ceilC(anchor.L, anchor.H)));   // clamp so an out-of-gamut base can't push siblings past their own ceiling
   let C = ceilC(L, H) * ratio;
   // muddy-escape on the blue/cyan arc: if it falls below the floor or 0.10 abs, rotate toward a lower ridge
   if (C / Math.max(1e-4, ceilC(L, H)) < CHROMA_FLOOR || C < 0.10) {
@@ -373,12 +427,17 @@ const PARTNER_TEMPLATES = {
 };
 
 // ---------- assembleTransition (color-relations §5) — per-role, pinnable, on-manifold ----------
-// p: resolved colour params (anchorHue/anchorDL/anchorChromaF/siblingSpread/gradientTemplate/
+// p: resolved colour params (anchorHue/anchorL/anchorC/siblingSpread/gradientTemplate/
 //    accentTemplate/accentTension/groundHue/groundDark/setCount/vividBudget).
 // prev: previous palette (for pins). pins: {base,sibling,gradient,accent,ground} — pinned roles copied from prev.
 function assembleTransition(rng, p = {}) {
   const keep = (role, fresh) => fresh();   // roles always freshly assembled (pins/prev removed)
-  const cf = p.anchorChromaF != null ? p.anchorChromaF : 1;   // global chroma fraction → mono (cf 0) = true greyscale
+  // BASE is now absolute OKLCH (anchorL/anchorC/anchorH). Re-project its chroma into a manifold "saturation fraction"
+  // so the derived roles (ground/gradient/accent) track the base's vividness exactly as before (mono C=0 ⇒ greyscale).
+  const aH0 = p.anchorHue != null ? p.anchorHue : 196;
+  const aL0 = p.anchorL != null ? p.anchorL : 0.88;
+  const aC0 = p.anchorC != null ? p.anchorC : 0.15;
+  const cf = Math.max(0, Math.min(1, aC0 / Math.max(1e-4, fH(aH0) * ceilC(Math.max(0.02, Math.min(0.99, aL0)), aH0))));
 
   // GROUND — dark recessive; read stops STRAIGHT off the manifold at a high-ridge cool hue (no
   // double-sibling → top stop lands at the spec's ~L0.6 dark-teal launchpad, not near-black).
@@ -389,13 +448,8 @@ function assembleTransition(rng, p = {}) {
     const groundStops = [topDL, topDL - 0.08, topDL - 0.21].map(dl => manifoldColour(gH, dl, cf));
     return { groundStops, groundTopL: groundStops[0].L, groundHue: gH };
   });
-  // BASE — free near-ridge anchor (H / value / chroma-fraction).
-  const base = keep('base', () => {
-    const aH = p.anchorHue != null ? p.anchorHue : 196;
-    const db = dLbounds(aH);
-    const aDL = p.anchorDL != null ? p.anchorDL : rng.tri(db.lo * 0.4, 0, db.hi * 0.4);   // explicit user value reaches the full L range (manifoldColour clamps L to gamut)
-    return { anchor: manifoldColour(aH, aDL, p.anchorChromaF != null ? p.anchorChromaF : 1), anchorDL: aDL };
-  });
+  // BASE — absolute OKLCH anchor (out-of-gamut allowed; oklchToRgb clamps to the cube on render).
+  const base = keep('base', () => ({ anchor: absColour(aL0, aC0, aH0) }));
   const anchor = base.anchor;
   // SIBLINGS — dark/light, spread by siblingSpread.
   const sib = keep('sibling', () => {
@@ -428,7 +482,7 @@ function assembleTransition(rng, p = {}) {
 
   const setCount = p.setCount != null ? p.setCount : 2;
   const useAccent = setCount >= 2;                         // count=1 → mono (accent collapses to base)
-  const focus = manifoldColour(rgbToOklch(202, 255, 2).H, 0);   // chartreuse glow (~OKLCH H125)
+  const focus = manifoldColour(rgbToOklch(202, 255, 2).H, 0, cf);   // chartreuse glow (~OKLCH H125); tracks vividness (cf 0 ⇒ grey in mono)
   const white = { L: 1, C: 0, H: 0, rgb: [255, 255, 255], hex: '#FFFFFF' };
   const black = { L: 0, C: 0, H: 0, rgb: [0, 0, 0], hex: '#000000' };
   const accent = useAccent ? acc.accent : anchor;
@@ -1120,10 +1174,10 @@ function timingRows() {
 // wheel" control directly, and ground hue is its own exposed role.
 function colorRows(defaultHue = 196) {
   return [
-    // BASE block — H + value(dL) + chroma-fraction, each a 3-knob band
-    P({ key: 'anchorHue', label: 'Base hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'base', full: { min: 0, max: 360 }, band: { randMin: 175, randMax: 260 }, cur: defaultHue, step: 1, dist: 'uniform', wrap: true }),
-    P({ key: 'anchorDL', label: 'Base lightness', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: -0.45, max: 0.45 }, band: { randMin: -0.06, randMax: 0.06 }, cur: 0.02, step: 0.01, dist: 'tri' }),
-    P({ key: 'anchorChromaF', label: 'Chroma', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1.0 }, band: { randMin: 0.88, randMax: 1.0 }, cur: 1.0, step: 0.01, dist: 'tri' }),
+    // BASE block — absolute OKLCH H / L / C, fixed scales (oklch.com-style), each a 3-knob band
+    P({ key: 'anchorHue', label: 'Hue', unit: '°', group: 'palette', type: 'hue', colorRole: 'base', full: { min: 0, max: 360 }, band: { randMin: 120, randMax: 330 }, cur: defaultHue, step: 1, dist: 'uniform', wrap: true }),
+    P({ key: 'anchorL', label: 'Lightness', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 0.55, randMax: 0.92 }, cur: 0.88, step: 0.01, dist: 'tri' }),
+    P({ key: 'anchorC', label: 'Chroma', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 0.4 }, band: { randMin: 0.10, randMax: 0.20 }, cur: 0.15, step: 0.005, dist: 'tri' }),
     P({ key: 'colorAlpha', label: 'Opacity', unit: '%', group: 'palette', type: 'colorAxis', colorRole: 'base', full: { min: 0, max: 1 }, band: { randMin: 1, randMax: 1 }, cur: 1.0, step: 0.01, dist: 'tri' }),
     // DERIVED — siblings / gradient-partner / accent (relate to base)
     P({ key: 'siblingSpread', label: 'Lightness spread', group: 'palette', type: 'colorAxis', colorRole: 'sibling', relatesTo: 'anchorHue', full: { min: 0.04, max: 0.40 }, band: { randMin: 0.10, randMax: 0.30 }, cur: 0.18, step: 0.01, dist: 'tri' }),
@@ -1282,6 +1336,7 @@ function rollTransition(seedStr, opts = {}) {
   // carry the user's band edits if staying in the same family; else clone the family template
   const rows = (opts.rows && opts.rowsFamily === familyKey) ? opts.rows : cloneRows(fam.rows);
   const params = resolveSpec(rows, rng);
+  clampGamutChroma(params);   // rolls stay vivid AND in-gamut; user picker edits bypass this and may go OOG
   params.family = fam.familyId;
   params._familyKey = familyKey;
   params.revealId = REVEAL_ID[params.revealKind] ?? 0;
@@ -1812,6 +1867,102 @@ function downloadZip(zip, name = 'psg-frames.zip') {
 }
 
 
+// ===== js/model3d.js =====
+// model3d.js — self-contained WebGL2 OKLCH gamut solid (oklch.com-style), zero deps.
+// The sRGB cube's 6 faces are sampled, converted to OKLCH, plotted as (x=L, y=C, z=H), unlit vertex-coloured.
+// Three gray iso-lines (current L / C / H planes) mark the current colour on the surface. Orbit by drag, zoom by wheel.
+// createGamut3D(canvas) → { setSlice(L,C,H), redraw(), dispose() } or null if WebGL2 is unavailable.
+
+const M3_CMAX = 0.4;   // matches the picker's absolute chroma ceiling (so the 3-D y-axis lines up with the charts)
+
+// ---- column-major mat4 helpers ----
+const m3cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const m3dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const m3norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+function m3persp(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+}
+function m3lookAt(eye, ctr, up) {
+  const z = m3norm([eye[0] - ctr[0], eye[1] - ctr[1], eye[2] - ctr[2]]);
+  const x = m3norm(m3cross(up, z)), y = m3cross(z, x);
+  return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -m3dot(x, eye), -m3dot(y, eye), -m3dot(z, eye), 1];
+}
+function m3mul(a, b) { const o = new Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; }
+
+// ---- gamut mesh: 6 RGB-cube faces → OKLCH coords, grid-triangulated, vertex-coloured ----
+function buildMesh(div) {
+  const pos = [], col = [], idx = [];
+  const map = (R, G, B) => { const o = rgbToOklch(R * 255, G * 255, B * 255); return [o.L, o.C / (2 * M3_CMAX), (((o.H % 360) + 360) % 360) / 360]; };
+  const faces = [(u, v) => [0, u, v], (u, v) => [1, u, v], (u, v) => [u, 0, v], (u, v) => [u, 1, v], (u, v) => [u, v, 0], (u, v) => [u, v, 1]];
+  for (const f of faces) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= div; i++) for (let j = 0; j <= div; j++) { const rgb = f(i / div, j / div), p = map(rgb[0], rgb[1], rgb[2]); pos.push(p[0], p[1], p[2]); col.push(rgb[0], rgb[1], rgb[2]); }
+    for (let i = 0; i < div; i++) for (let j = 0; j < div; j++) { const a = base + i * (div + 1) + j, b = a + 1, c = a + (div + 1), d = c + 1; idx.push(a, b, c, b, d, c); }
+  }
+  const n = pos.length / 3; let cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < n; i++) { cx += pos[i * 3]; cy += pos[i * 3 + 1]; cz += pos[i * 3 + 2]; }
+  cx /= n; cy /= n; cz /= n;
+  for (let i = 0; i < n; i++) { pos[i * 3] -= cx; pos[i * 3 + 1] -= cy; pos[i * 3 + 2] -= cz; }
+  return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint16Array(idx), centroid: [cx, cy, cz] };
+}
+
+function m3compile(gl, vs, fs) {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+function createGamut3D(canvas) {
+  const gl = canvas.getContext('webgl2', { alpha: true, antialias: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
+  if (!gl) return null;
+  const prog = m3compile(gl, `#version 300 es
+in vec3 aPos; in vec3 aCol; uniform mat4 uMVP; out vec3 vCol; out vec3 vPos;
+void main(){ vCol = aCol; vPos = aPos; gl_Position = uMVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float; in vec3 vCol; in vec3 vPos; uniform vec3 uSlice; out vec4 o;
+void main(){ vec3 c = vCol; float w = 0.006, g = 0.62;
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.x - uSlice.x)));
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.y - uSlice.y)));
+  c = mix(c, vec3(g), smoothstep(w, 0.0, abs(vPos.z - uSlice.z)));
+  o = vec4(c, 1.0); }`);
+  const mesh = buildMesh(24);
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = (data, loc, n, target = gl.ARRAY_BUFFER) => { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); } };
+  buf(mesh.pos, gl.getAttribLocation(prog, 'aPos'), 3);
+  buf(mesh.col, gl.getAttribLocation(prog, 'aCol'), 3);
+  buf(mesh.idx, -1, 0, gl.ELEMENT_ARRAY_BUFFER);
+  const uMVP = gl.getUniformLocation(prog, 'uMVP'), uSlice = gl.getUniformLocation(prog, 'uSlice');
+  gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  let yaw = 0.9, pitch = 0.38, dist = 1.12, slice = [9, 9, 9], raf = 0;
+  function draw() {
+    raf = 0;
+    const w = canvas.clientWidth || 280, h = canvas.clientHeight || 150, dpr = Math.min(devicePixelRatio || 1, 2);
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.30, 0.30, 0.36, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);   // neutral so dark gamut faces stay visible
+    const eye = [dist * Math.cos(pitch) * Math.cos(yaw), dist * Math.sin(pitch), dist * Math.cos(pitch) * Math.sin(yaw)];
+    const mvp = m3mul(m3persp(1.2, (w / h) || 1, 0.05, 20), m3lookAt(eye, [0, 0, 0], [0, 1, 0]));
+    gl.useProgram(prog); gl.bindVertexArray(vao);
+    gl.uniformMatrix4fv(uMVP, false, mvp); gl.uniform3f(uSlice, slice[0], slice[1], slice[2]);
+    gl.drawElements(gl.TRIANGLES, mesh.idx.length, gl.UNSIGNED_SHORT, 0);
+  }
+  const redraw = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault(); canvas.setPointerCapture(e.pointerId); let px = e.clientX, py = e.clientY;
+    const mv = ev => { yaw -= (ev.clientX - px) * 0.01; pitch = Math.max(-1.45, Math.min(1.45, pitch + (ev.clientY - py) * 0.01)); px = ev.clientX; py = ev.clientY; redraw(); };
+    const up = () => { canvas.removeEventListener('pointermove', mv); canvas.removeEventListener('pointerup', up); };
+    canvas.addEventListener('pointermove', mv); canvas.addEventListener('pointerup', up);
+  });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); dist = Math.max(0.95, Math.min(3.5, dist * (1 + Math.sign(e.deltaY) * 0.08))); redraw(); }, { passive: false });
+  redraw();
+  return {
+    setSlice(L, C, H) { slice = [L - mesh.centroid[0], C / (2 * M3_CMAX) - mesh.centroid[1], (((H % 360) + 360) % 360) / 360 - mesh.centroid[2]]; redraw(); },
+    redraw,
+    dispose() { const e = gl.getExtension('WEBGL_lose_context'); if (e) e.loseContext(); },
+  };
+}
+
+
 // ===== js/ui.js =====
 // PSG UI — builds the transport, the hero-Randomize panel, the auto-generated 3-knob control bank
 // (one renderer per param type), the oklch.com-style colour panel, and the export dialog. Vanilla DOM.
@@ -1865,7 +2016,7 @@ function buildUI(app) {
   buildBody(app, ui);
   buildDialog(app, ui);
   // live colour-change hook: repaint the Randomize gradient + the role swatches without a full re-render
-  app.onColorChange = () => { const r = document.getElementById('randomize'); if (r) paintRandomizeGradient(r, app); updateColorSwatches(app); };
+  app.onColorChange = () => { const r = document.getElementById('randomize'); if (r) paintRandomizeGradient(r, app); updateColorSwatches(app); if (ui._codeField && ui._codeVal) ui._codeField.value = ui._codeVal(); };
   app.onParamChange = (k) => { if ((k === 'introDur' || k === 'loopDur' || k === 'outroDur') && ui.layoutScrubMarks) ui.layoutScrubMarks(); };
   // keep the scrubber synced to the playhead
   app.onFrame = (t) => { if (ui.scrub && document.activeElement !== ui.scrub) ui.scrub.value = String(Math.round(t * app.N)); };
@@ -1935,7 +2086,7 @@ function familyGallery(app, ui) {
   const row = psgSelectableBtn({
     options: Object.keys(FAMILIES).map(k => ({ val: k, label: FAMILIES[k].label })),
     get: () => app.state.familyKey,
-    set: k => { if (app.state.famRand.size && !app.state.famRand.has(k)) app.state.famRand = new Set([k]); app.setFamily(k); refreshAll(app, ui); },
+    set: k => { app.setFamily(k); refreshAll(app, ui); },   // manual switch only — never touches the randomize set
     inRand: k => app.state.famRand && app.state.famRand.has(k),
     toggleRand: k => { app.state.famRand.has(k) ? app.state.famRand.delete(k) : app.state.famRand.add(k); },
   });
@@ -1995,6 +2146,32 @@ function curveRow(app, ui, p) {
   row.append(el('div', { class: 'slot' }, [ed]));
   return row;
 }
+// ONE pointer model for every 3-knob track `bar`: click/drag the track moves the CURRENT value; pointer-down within
+// ~11px of a band handle grabs that band edge instead, and when the two band handles overlap the FIRST-MOVE direction
+// picks which one (so a band stuck at an edge can always be re-widened). lo/hi/cur handles are pure visuals.
+function knobDrag(bar, p, lo, hi, app, ui, layout, onColorChange) {
+  const span = hi - lo || 1;
+  const xToV = clientX => { const r = bar.getBoundingClientRect(); return { v: Math.max(lo, Math.min(hi, snp(lo + ((clientX - r.left) / r.width) * span, p))), w: r.width }; };
+  bar.addEventListener('pointerdown', e => {
+    e.preventDefault(); bar.setPointerCapture(e.pointerId);
+    const { v: v0, w } = xToV(e.clientX), pxPer = w / span;
+    const dLo = Math.abs(v0 - p.band.randMin) * pxPer, dHi = Math.abs(v0 - p.band.randMax) * pxPer, dCur = Math.abs(v0 - app.state.params[p.key]) * pxPer;
+    let mode = (ui.showRanges && Math.min(dLo, dHi) <= 11 && Math.min(dLo, dHi) <= dCur)
+      ? (Math.abs(p.band.randMax - p.band.randMin) * pxPer <= 3 ? null : (dLo <= dHi ? 'lo' : 'hi'))   // overlapping band → defer to first-move direction
+      : 'cur';
+    const apply = v => {
+      let changed = false;
+      if (mode === 'cur') { app.setParam(p.key, v); changed = true; }
+      else if (mode === 'lo') { p.band.randMin = Math.min(v, p.band.randMax); if (app.state.params[p.key] < v) { app.setParam(p.key, v); changed = true; } }
+      else if (mode === 'hi') { p.band.randMax = Math.max(v, p.band.randMin); if (app.state.params[p.key] > v) { app.setParam(p.key, v); changed = true; } }
+      layout(); if (changed && onColorChange) onColorChange();
+    };
+    const move = ev => { const { v } = xToV(ev.clientX); if (mode === null) mode = v < p.band.randMin ? 'lo' : 'hi'; apply(v); };
+    const up = () => { bar.releasePointerCapture(e.pointerId); bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+    if (mode !== null) apply(v0);
+  });
+}
 function knob3Row(app, ui, p) {
   const row = el('div', { class: 'prow' });
   const valEl = el('span', { class: 'pval', text: fmt(app.state.params[p.key], p) + (p.unit || '') });
@@ -2014,17 +2191,7 @@ function knob3Row(app, ui, p) {
     band.style.width = (norm(p.band.randMax) - norm(p.band.randMin)) * 100 + '%';
     valEl.textContent = fmt(app.state.params[p.key], p) + (p.unit || '');
   };
-  const drag = (handle, get, set) => {
-    handle.addEventListener('pointerdown', e => {
-      e.preventDefault(); handle.setPointerCapture(e.pointerId); handle.style.cursor = 'grabbing';
-      const move = ev => { const r = k.getBoundingClientRect(); let v = lo + ((ev.clientX - r.left) / r.width) * (hi - lo); v = clmp(snp(v, p), lo, hi); set(v); layout(); };
-      const up = () => { handle.releasePointerCapture(e.pointerId); handle.style.cursor = 'grab'; handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
-      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); move(e);
-    });
-  };
-  drag(hCur, () => app.state.params[p.key], v => app.setParam(p.key, v));
-  drag(hLo, () => p.band.randMin, v => { p.band.randMin = Math.min(v, p.band.randMax); if (app.state.params[p.key] < v) app.setParam(p.key, v); });
-  drag(hHi, () => p.band.randMax, v => { p.band.randMax = Math.max(v, p.band.randMin); if (app.state.params[p.key] > v) app.setParam(p.key, v); });
+  knobDrag(k, p, lo, hi, app, ui, layout);
   layout();
   ui._layouts.push(layout);
   return row;
@@ -2064,7 +2231,7 @@ function colorPanel(app, ui) {
   const schemeRow = psgSelectableBtn({
     options: [{ val: 'mono', label: 'Mono' }, { val: 'colourful', label: 'Colourful' }, { val: 'full-range', label: 'Full range' }],
     get: () => app.state.scheme,
-    set: k => { if (app.state.schemeRand.size && !app.state.schemeRand.has(k)) app.state.schemeRand = new Set([k]); app.state.scheme = k; cskApplyScheme(app, k); app.reassemble(); app.refresh(); refreshBody(app, ui); },
+    set: k => { app.state.scheme = k; cskApplyScheme(app, k); app.reassemble(); app.refresh(); refreshBody(app, ui); },   // manual pick only — never touches the randomize set
     inRand: k => app.state.schemeRand && app.state.schemeRand.has(k),
     toggleRand: k => { app.state.schemeRand.has(k) ? app.state.schemeRand.delete(k) : app.state.schemeRand.add(k); },
   });
@@ -2072,7 +2239,6 @@ function colorPanel(app, ui) {
   wrap.append(el('div', { class: 'collabel', text: 'Scheme' }), schemeRow);
 
   const byKey = {}; for (const r of app.rows()) byKey[r.key] = r;
-  const base = { H: app.state.params.anchorHue, dL: app.state.params.anchorDL, chromaF: app.state.params.anchorChromaF };
   const pal = app.state.palette, a = app.state.params.colorAlpha;
 
   // SWATCH STRIP (alpha-aware) → click a role to expand its settings
@@ -2085,14 +2251,13 @@ function colorPanel(app, ui) {
   wrap.append(strip);
   wrap.append(cskReadout(app, ui));
 
-  // visualisations: 2-D L–C pad + 3-D gamut mini
-  wrap.append(cskPad(app, ui));
-  wrap.append(cskGamut3D(app));
-
-  // BASE block — coloured axis sliders (H / L / C / alpha)
+  // BASE block — a 2-D gamut chart above each slider (oklch.com cards: Hue→L×C, Lightness→H×C, Chroma→H×L), alpha, then the 3-D gamut
   const baseBlock = el('div', { class: 'roleblock open' });
   baseBlock.append(psgRoleHeader(ui, 'base', 'Base colour', null));
-  for (const key of ['anchorHue', 'anchorDL', 'anchorChromaF', 'colorAlpha']) if (byKey[key]) baseBlock.append(cskAxisRow(app, ui, byKey[key]));
+  const chartFor = { anchorHue: 'lc', anchorL: 'hc', anchorC: 'hl' };
+  for (const key of ['anchorHue', 'anchorL', 'anchorC']) if (byKey[key]) { baseBlock.append(cskChart(app, ui, chartFor[key])); baseBlock.append(colorAxisRow(app, ui, byKey[key])); }
+  if (byKey['colorAlpha']) baseBlock.append(colorAxisRow(app, ui, byKey['colorAlpha']));
+  baseBlock.append(cskGamut3D(app, ui));
   wrap.append(baseBlock);
 
   // DERIVED roles — header = role name, row label = what it changes
@@ -2122,121 +2287,165 @@ function cskSwatchBg(c, alpha = 1) {
   return `background:linear-gradient(${over},${over}),conic-gradient(#888 25%,#bbb 0 50%,#888 0 75%,#bbb 0);background-size:cover,10px 10px`;
 }
 
-// coloured axis slider: native range over a canvas-painted manifold track
-function cskAxisRow(app, ui, p) {
-  const row = el('div', { class: 'prow' });
+// colour axis = gamut-painted track + a full 3-knob (current value AND the two randomize-band handles, all draggable) + editable numeric value
+function colorAxisRow(app, ui, p) {
   const isAlpha = p.key === 'colorAlpha';
-  const valEl = el('span', { class: 'pval', text: cskAxisVal(app, p) });
-  row.append(el('span', { class: 'plabel', text: p.label }), valEl);
+  const row = el('div', { class: 'prow' });
+  const valIn = el('input', { class: 'pval pedit', spellcheck: 'false', value: cskAxisDisplay(app, p), title: 'type a value + Enter' });
+  const commit = () => { const v = cskAxisParse(app, p, valIn.value); if (v != null) { app.setParam(p.key, v); cskRepaintColourUI(app, ui); } valIn.value = cskAxisDisplay(app, p); };
+  valIn.addEventListener('focus', e => e.target.select());
+  valIn.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+  valIn.addEventListener('change', commit);
+  row.append(el('span', { class: 'plabel', text: p.label }), valIn);
   const slot = el('div', { class: 'slot' });
-  const wrapb = el('div', { class: 'axisbar' });
+  const bar = el('div', { class: 'caxis' + (ui.showRanges ? '' : ' noband') });
   const cv = el('canvas', { class: 'axiscanvas' });
-  const input = el('input', { type: 'range', class: 'axisrange', min: p.full.min, max: p.full.max, step: p.step, value: app.state.params[p.key] });
-  wrapb.append(cv, input); slot.append(wrapb); row.append(slot);
-  const paint = () => cskPaintTrack(cv, app, p, isAlpha, ui);
-  input.addEventListener('input', e => { app.setParam(p.key, +e.target.value); valEl.textContent = cskAxisVal(app, p); cskRepaintColourUI(app, ui); });
-  requestAnimationFrame(paint);
-  ui._layouts.push(() => { input.value = app.state.params[p.key]; valEl.textContent = cskAxisVal(app, p); paint(); });
+  const band = el('div', { class: 'band' });
+  const hLo = el('div', { class: 'h bnd' }), hHi = el('div', { class: 'h bnd' }), hCur = el('div', { class: 'h cur' });
+  bar.append(cv, band, hLo, hHi, hCur); slot.append(bar); row.append(slot);
+  const lo = p.full.min, hi = p.full.max, norm = v => (v - lo) / (hi - lo || 1);
+  const paint = () => cskPaintTrack(cv, app, p, isAlpha);
+  const layout = () => {
+    hCur.style.left = norm(app.state.params[p.key]) * 100 + '%';
+    hLo.style.left = norm(p.band.randMin) * 100 + '%';
+    hHi.style.left = norm(p.band.randMax) * 100 + '%';
+    band.style.left = norm(p.band.randMin) * 100 + '%';
+    band.style.width = (norm(p.band.randMax) - norm(p.band.randMin)) * 100 + '%';
+    valIn.value = cskAxisDisplay(app, p);
+  };
+  knobDrag(bar, p, lo, hi, app, ui, layout, () => { paint(); cskRepaintColourUI(app, ui); });
+  requestAnimationFrame(() => { paint(); layout(); });
+  ui._layouts.push(() => { paint(); layout(); });
   return row;
 }
-const cskAxisVal = (app, p) => p.key === 'colorAlpha' ? Math.round(app.state.params[p.key] * 100) + '%'
-  : p.key === 'anchorDL' ? 'L ' + Math.max(0.02, Math.min(0.99, naturalL(app.state.params.anchorHue) + app.state.params[p.key])).toFixed(2)
-  : fmt(app.state.params[p.key], p) + (p.unit || '');
-function cskPaintTrack(cv, app, p, isAlpha, ui) {
+function cskAxisDisplay(app, p) {
+  const v = app.state.params[p.key];
+  if (p.key === 'colorAlpha') return Math.round(v * 100) + '%';
+  if (p.key === 'anchorHue') return Math.round(v) + '°';
+  if (p.key === 'anchorC') return v.toFixed(3);
+  return v.toFixed(2);   // anchorL — absolute 0..1
+}
+function cskAxisParse(app, p, text) {
+  const n = parseFloat(text); if (!Number.isFinite(n)) return null;
+  if (p.key === 'colorAlpha') return Math.max(0, Math.min(1, n / 100));
+  if (p.key === 'anchorHue') return ((n % 360) + 360) % 360;
+  return Math.max(p.full.min, Math.min(p.full.max, n));   // anchorL 0..1, anchorC 0..0.4
+}
+function cskPaintTrack(cv, app, p, isAlpha) {
   const w = cv.clientWidth || 280, h = cv.clientHeight || 14, dpr = Math.min(devicePixelRatio || 1, 2);
-  cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr);
-  const base = { H: app.state.params.anchorHue, dL: app.state.params.anchorDL, chromaF: app.state.params.anchorChromaF };
+  cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
   if (isAlpha) {
     g.fillStyle = cskCheckerPattern(g); g.fillRect(0, 0, w, h);
     const c = app.state.palette.anchor.hex, r = parseInt(c.slice(1, 3), 16), gg = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
     const grad = g.createLinearGradient(0, 0, w, 0); grad.addColorStop(0, `rgba(${r},${gg},${b},0)`); grad.addColorStop(1, `rgba(${r},${gg},${b},1)`);
     g.fillStyle = grad; g.fillRect(0, 0, w, h); return;
   }
-  const axis = p.key === 'anchorHue' ? 'hue' : p.key === 'anchorDL' ? 'value' : 'chroma';
-  const n = Math.max(24, Math.min(96, Math.round(w / 4))), s = cskAxisSamples(axis, base, n);
-  for (let i = 0; i < n; i++) {
-    const x = (i / n) * w, bw = w / n + 1, c = s[i];
-    if (c.inGamut) { g.fillStyle = c.hex; g.fillRect(x, 0, bw, h); }
-    else { g.fillStyle = '#1a1a22'; g.fillRect(x, 0, bw, h); cskHatch(g, x, bw, h); }
-  }
-  if (ui && ui.showRanges && p.band) {                 // randomize-band ticks (consistent with the 3-knob band)
-    const fmin = p.full.min, fspan = (p.full.max - fmin) || 1;
-    g.fillStyle = 'rgba(255,255,255,.92)';
-    for (const v of [p.band.randMin, p.band.randMax]) g.fillRect(((v - fmin) / fspan) * w - 1, 0, 2, h);
-  }
+  const base = { L: app.state.params.anchorL, C: app.state.params.anchorC, H: app.state.params.anchorHue };
+  const axis = p.key === 'anchorHue' ? 'hue' : p.key === 'anchorL' ? 'value' : 'chroma';
+  const n = Math.max(24, Math.min(160, Math.round(w))), s = cskAxisSamples(axis, base, n);   // ~1 sample/px → crisp gamut edge
+  for (let i = 0; i < n; i++) { const c = s[i]; if (c.inGamut) { g.fillStyle = c.hex; g.fillRect((i / n) * w, 0, w / n + 1, h); } }   // out-of-gamut left transparent
 }
-function cskHatch(g, x, w, h) { g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; for (let o = -h; o < w + h; o += 5) { g.beginPath(); g.moveTo(x + o, h); g.lineTo(x + o + h, 0); g.stroke(); } }
 let _cskChk; function cskCheckerPattern(g) { if (_cskChk) return _cskChk; const c = document.createElement('canvas'); c.width = c.height = 10; const x = c.getContext('2d'); x.fillStyle = '#9a9aa6'; x.fillRect(0, 0, 10, 10); x.fillStyle = '#5a5a66'; x.fillRect(0, 0, 5, 5); x.fillRect(5, 5, 5, 5); return _cskChk = g.createPattern(c, 'repeat'); }
 
-// 2-D pad: L (vertical) × chroma-fraction (horizontal) at current hue — sets anchorDL + anchorChromaF together
-function cskPad(app, ui) {
-  const pad = el('div', { class: 'cpad' });
+// 2-D gamut slice chart (oklch.com-style). axes: 'lc' (x=L,y=C @ fixed H — the Hue slider's chart),
+// 'hc' (x=H,y=C @ fixed L — the Lightness slider's chart), 'hl' (x=H,y=L @ fixed C — the Chroma slider's chart).
+// In-gamut pixels painted true colour, out-of-gamut left transparent; crosshair at current; click/drag sets the two axes.
+function cskChart(app, ui, axes) {
+  const pad = el('div', { class: 'cchart' });
   const cv = el('canvas'); const dot = el('div', { class: 'dot' }); pad.append(cv, dot);
+  const P = () => app.state.params;
+  const fixedOf = () => axes === 'lc' ? P().anchorHue : axes === 'hc' ? P().anchorL : P().anchorC;
+  const xf = () => axes === 'lc' ? P().anchorL : P().anchorHue / 360;            // x fraction (0..1)
+  const yf = () => axes === 'hl' ? P().anchorL : P().anchorC / C_MAX;            // y fraction (top = high)
   const paint = () => {
-    const w = cv.clientWidth || 280, h = cv.clientHeight || 150, dpr = Math.min(devicePixelRatio || 1, 2);
-    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr);
-    const grid = cskSliceGrid(app.state.params.anchorHue, 40, 28), cw = w / grid.cols, ch = h / grid.rows;
-    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++) {
-      const cell = grid.cell[r * grid.cols + c];
-      g.fillStyle = cell.inGamut ? cell.hex : '#12121a'; g.fillRect(c * cw, r * ch, cw + 1, ch + 1);
-    }
-    const L = Math.max(0.02, Math.min(0.99, naturalL(app.state.params.anchorHue) + app.state.params.anchorDL));
-    dot.style.left = app.state.params.anchorChromaF * 100 + '%';
-    dot.style.top = ((0.99 - L) / 0.97) * 100 + '%';
+    const w = cv.clientWidth || 300, h = cv.clientHeight || 92, dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+    const grid = cskChartGrid(axes, fixedOf(), 72, 48), cw = w / grid.cols, ch = h / grid.rows;
+    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++) { const cell = grid.cell[r * grid.cols + c]; if (cell.inGamut) { g.fillStyle = cell.hex; g.fillRect(c * cw, r * ch, cw + 1, ch + 1); } }
+    dot.style.left = xf() * 100 + '%'; dot.style.top = (1 - yf()) * 100 + '%';
   };
   const set = ev => {
     const r = cv.getBoundingClientRect();
-    const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), fy = Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
-    const L = 0.99 - fy * 0.97;
-    app.setParam('anchorChromaF', +fx.toFixed(2));
-    app.setParam('anchorDL', +(L - naturalL(app.state.params.anchorHue)).toFixed(3));
+    const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), yv = 1 - Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
+    if (axes === 'lc')      { app.setParam('anchorL', +fx.toFixed(3)); app.setParam('anchorC', +(yv * C_MAX).toFixed(4)); }
+    else if (axes === 'hc') { app.setParam('anchorHue', +(fx * 360).toFixed(1)); app.setParam('anchorC', +(yv * C_MAX).toFixed(4)); }
+    else                    { app.setParam('anchorHue', +(fx * 360).toFixed(1)); app.setParam('anchorL', +yv.toFixed(3)); }
     cskRepaintColourUI(app, ui);
   };
   pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); set(e); const m = ev => set(ev); const up = () => { pad.removeEventListener('pointermove', m); pad.removeEventListener('pointerup', up); }; pad.addEventListener('pointermove', m); pad.addEventListener('pointerup', up); });
   requestAnimationFrame(paint); ui._layouts.push(paint);
   return pad;
 }
-// 3-D gamut mini: static iso-projection of the hue ring + current point (ponytail: no rotation)
-function cskGamut3D(app) {
-  const box = el('div', { class: 'gamut3d' });
-  const cv = el('canvas'); box.append(cv);
-  const paint = () => {
-    const w = cv.clientWidth || 280, h = cv.clientHeight || 96, dpr = Math.min(devicePixelRatio || 1, 2);
-    cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const cx = w / 2, cy = h * 0.6, rx = w * 0.34, ry = h * 0.22;
-    for (let d = 0; d < 72; d++) {
-      const H = d * 5, ang = (H - 90) * Math.PI / 180, L = naturalL(H), C = 0.9 * ceilC(L, H), { rgb, inGamut } = oklchToRgb(L, C, H);
-      g.fillStyle = inGamut ? hex(rgb) : '#222'; g.beginPath();
-      g.arc(cx + Math.cos(ang) * rx, cy + Math.sin(ang) * ry - (L - 0.5) * h * 0.5, 2.4, 0, 7); g.fill();
-    }
-    const H = app.state.params.anchorHue, ang = (H - 90) * Math.PI / 180, L = Math.max(0.02, Math.min(0.99, naturalL(H) + app.state.params.anchorDL)), C = app.state.params.anchorChromaF;
-    const x = cx + Math.cos(ang) * rx * (0.2 + C * 0.8), y = cy + Math.sin(ang) * ry - (L - 0.5) * h * 0.5;
-    g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 5, 0, 7); g.stroke();
-  };
-  requestAnimationFrame(paint); (app._cskGamutPaint ||= []).push(paint);
+// 3-D OKLCH gamut solid (WebGL2, oklch.com-style). Built ONCE and reused across panel rebuilds (one context, no leak).
+// Gray slice-lines mark the current colour; drag to rotate, scroll to zoom.
+function cskGamut3D(app, ui) {
+  if (!ui._gamut3d) {
+    const box = el('div', { class: 'gamut3d', title: 'OKLCH gamut — drag to rotate, scroll to zoom' });
+    const cv = el('canvas'); box.append(cv);
+    ui._gamut3d = { box, ctl: createGamut3D(cv) };
+  }
+  const { box, ctl } = ui._gamut3d;
+  if (ctl) {
+    const set = () => ctl.setSlice(app.state.params.anchorL, app.state.params.anchorC, app.state.params.anchorHue);
+    set(); (app._cskGamutPaint ||= []).push(set); requestAnimationFrame(ctl.redraw);
+  }
   return box;
 }
-// readout field + format dropdown (hex / oklch / rgb / figma), copyable
+// readout field + format dropdown (hex / rgb / hsl / oklch / oklab / lch / lab / display-p3); editable for the base colour
 // colour for the currently-expanded role (readout follows the selected swatch)
 function cskRoleColour(app, ui) {
   const p = app.state.palette;
   return ({ base: p.anchor, sibling: p.dark, siblingLight: p.light, gradient: p.gradient, accent: p.accent, ground: p.groundStops[0] })[ui._colExpanded] || p.anchor;
 }
 function cskReadout(app, ui) {
+  const isBase = !ui._colExpanded || ui._colExpanded === 'base';   // only the base colour is directly settable
   const val = () => cskFormat(cskRoleColour(app, ui), app.state.params.colorAlpha, ui._codeFmt || 'hex');
-  const field = el('input', { class: 'cscode', readonly: '', value: val(),
-    onclick: e => { e.target.select(); navigator.clipboard && navigator.clipboard.writeText(e.target.value); } });
+  const field = el('input', { class: 'cscode', spellcheck: 'false', value: val(), onfocus: e => e.target.select(),
+    title: isBase ? 'type a colour (hex / rgb / hsl / oklch / oklab) + Enter to set the base — or copy' : 'click to copy' });
+  if (isBase) {
+    field.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+    field.addEventListener('change', e => { if (cskParseColor(app, e.target.value)) cskRepaintColourUI(app, ui); else e.target.value = val(); });
+  } else {
+    field.readOnly = true;
+    field.addEventListener('click', e => { e.target.select(); navigator.clipboard && navigator.clipboard.writeText(e.target.value); });
+  }
   const fmtSel = el('select', { class: 'mini cscode-fmt', onchange: e => { ui._codeFmt = e.target.value; field.value = val(); } });
-  for (const f of ['hex', 'oklch', 'rgb', 'figma']) fmtSel.append(el('option', { value: f, text: f, selected: (ui._codeFmt || 'hex') === f ? '' : null }));
+  for (const f of ['hex', 'rgb', 'hsl', 'oklch', 'oklab', 'lch', 'lab', 'p3']) fmtSel.append(el('option', { value: f, text: f, selected: (ui._codeFmt || 'hex') === f ? '' : null }));
   ui._codeField = field; ui._codeVal = val;
   return el('div', { class: 'csreadout' }, [fmtSel, field]);
 }
 function cskFormat(c, a, f) {
   const [r, g, b] = c.rgb, A = a < 1 ? ' / ' + Math.round(a * 100) + '%' : '';
-  if (f === 'oklch') return `oklch(${(c.L * 100).toFixed(1)}% ${c.C.toFixed(3)} ${c.H.toFixed(1)}${A})`;
-  if (f === 'rgb') return a < 1 ? `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
-  if (f === 'figma') return c.hex.replace('#', '') + (a < 1 ? ', ' + Math.round(a * 100) + '%' : '');
-  return c.hex + (a < 1 ? Math.round(a * 255).toString(16).padStart(2, '0').toUpperCase() : '');
+  switch (f) {
+    case 'rgb': return a < 1 ? `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
+    case 'hsl': { const { h, s, l } = rgbToHsl(c.rgb); return `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%${A})`; }
+    case 'oklch': return `oklch(${(c.L * 100).toFixed(1)}% ${c.C.toFixed(3)} ${c.H.toFixed(1)}${A})`;
+    case 'oklab': { const aa = c.C * Math.cos(c.H * Math.PI / 180), bb = c.C * Math.sin(c.H * Math.PI / 180); return `oklab(${(c.L * 100).toFixed(1)}% ${aa.toFixed(3)} ${bb.toFixed(3)}${A})`; }
+    case 'lch': { const L = srgbToLch(c.rgb); return `lch(${L.L.toFixed(1)}% ${L.C.toFixed(1)} ${L.H.toFixed(1)}${A})`; }
+    case 'lab': { const L = srgbToLab(c.rgb); return `lab(${L.L.toFixed(1)}% ${L.a.toFixed(1)} ${L.b.toFixed(1)}${A})`; }
+    case 'p3': { const p = srgbToP3(c.rgb); return `color(display-p3 ${p[0].toFixed(4)} ${p[1].toFixed(4)} ${p[2].toFixed(4)}${A})`; }
+    default: return c.hex + (a < 1 ? Math.round(a * 255).toString(16).padStart(2, '0').toUpperCase() : '');   // hex
+  }
+}
+// parse a typed colour string → set the base anchor (hex / rgb / oklch / oklab). Returns true on success.
+function cskParseColor(app, str) {
+  str = (str || '').trim(); let L, C, H, m;
+  if (/^#?[0-9a-f]{3}$|^#?[0-9a-f]{6}$/i.test(str)) {
+    let h = str.replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join('');
+    const o = rgbToOklch(...hexToRgb('#' + h)); L = o.L; C = o.C; H = o.H;
+  } else if ((m = str.match(/^rgba?\(([^)]+)\)/i))) {
+    const n = m[1].split(/[\s,/]+/).map(parseFloat); const o = rgbToOklch(n[0], n[1], n[2]); L = o.L; C = o.C; H = o.H;
+  } else if ((m = str.match(/^oklch\(([^)]+)\)/i))) {
+    const n = m[1].replace(/%/g, '').split(/[\s/]+/).map(parseFloat); L = n[0] > 1.5 ? n[0] / 100 : n[0]; C = n[1]; H = n[2];
+  } else if ((m = str.match(/^oklab\(([^)]+)\)/i))) {
+    const n = m[1].replace(/%/g, '').split(/[\s/]+/).map(parseFloat); L = n[0] > 1.5 ? n[0] / 100 : n[0]; C = Math.hypot(n[1], n[2]); H = ((Math.atan2(n[2], n[1]) / Math.PI * 180) + 360) % 360;
+  } else return false;
+  if (![L, C, H].every(Number.isFinite)) return false;
+  H = ((H % 360) + 360) % 360;
+  app.setParam('anchorHue', H);
+  app.setParam('anchorL', Math.max(0, Math.min(1, L)));
+  app.setParam('anchorC', Math.max(0, Math.min(C_MAX, C)));   // absolute — exact, no manifold inversion
+  return true;
 }
 // repaint just the colour visualisations after a colour edit (no refreshBody → no focus loss)
 function cskRepaintColourUI(app, ui) {
@@ -2249,13 +2458,13 @@ function cskRepaintColourUI(app, ui) {
 function cskApplyScheme(app, key) {
   const rows = app.rows(), row = k => rows.find(r => r.key === k), set = (k, v) => { app.state.params[k] = v; };
   if (key === 'mono') {                              // TRUE greyscale: chroma locked to 0
-    set('anchorChromaF', 0); const r = row('anchorChromaF'); if (r) { r.band.randMin = 0; r.band.randMax = 0; }
+    set('anchorC', 0); const r = row('anchorC'); if (r) { r.band.randMin = 0; r.band.randMax = 0; }
     set('gradientTemplate', 'mono'); set('accentTemplate', 'analogous');
-  } else if (key === 'colourful') {                  // ride the manifold ceiling
-    set('anchorChromaF', 1.0); const r = row('anchorChromaF'); if (r) { r.band.randMin = 0.95; r.band.randMax = 1.0; }
+  } else if (key === 'colourful') {                  // vivid (near the cool-hue ceiling, absolute C)
+    set('anchorC', 0.16); const r = row('anchorC'); if (r) { r.band.randMin = 0.13; r.band.randMax = 0.20; }
     set('gradientTemplate', 'analogous'); set('accentTemplate', 'splitComplement'); set('accentTension', 28);
   } else if (key === 'full-range') {                 // open the WHOLE range on all 3 colour dims
-    for (const k of ['anchorHue', 'anchorDL', 'anchorChromaF']) { const r = row(k); if (r) { r.band.randMin = r.full.min; r.band.randMax = r.full.max; } }
+    for (const k of ['anchorHue', 'anchorL', 'anchorC']) { const r = row(k); if (r) { r.band.randMin = r.full.min; r.band.randMax = r.full.max; } }
   }
 }
 
@@ -2305,7 +2514,7 @@ function snp(v, p) { if (p.step) v = Math.round(v / p.step) * p.step; return +v.
 // PSG app controller. Owns the state + preview loop (snapped i/N grid), exposes the methods the UI
 // and the headless harness drive (roll / seek / setParam / reassemble / export).
 
-const COLOR_KEYS = new Set(['anchorHue', 'anchorDL', 'anchorChromaF', 'siblingSpread',
+const COLOR_KEYS = new Set(['anchorHue', 'anchorL', 'anchorC', 'siblingSpread',
   'gradientTemplate', 'accentTemplate', 'accentTension', 'groundHue', 'groundDark', 'setCount']);
 
 function boot() {
@@ -2338,6 +2547,7 @@ function boot() {
         this.state.scheme = sk; cskApplyScheme(this, sk);
         const crng = makeRng(seed + '-recolour');
         for (const r of this.state.rows) if (r.group === 'palette') this.state.params[r.key] = sampleParam(r, crng);
+        clampGamutChroma(this.state.params);   // keep the scheme-resampled base in-gamut too
         this.reassemble();
       }
       this.refresh(); return this.state;
